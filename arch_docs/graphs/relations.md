@@ -10,6 +10,10 @@ graph TD
   implementation["src/version.cpp"]
   package["shmipcConfig.cmake / shmipcTargets.cmake"]
   ci[".github/workflows/ci.yml"]
+  runner["tools/go_oracle runner"]
+  upstream["third_party/shmipc-go header.encode"]
+  golden["tests/data/golden/control_headers.txt"]
+  golden_test["C++ golden test"]
 
   consumer -- includes --> public
   consumer -- links --> library
@@ -17,6 +21,10 @@ graph TD
   library -- contains --> implementation
   package -- exports --> library
   ci -- configures/builds/tests/installs --> library
+  runner -- overlays/calls --> upstream
+  upstream -- verifies --> golden
+  golden_test -- reads/verifies --> golden
+  ci -- runs --> runner
 ```
 
 ## 运行时边界

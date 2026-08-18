@@ -15,6 +15,7 @@ option(SHMIPC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(SHMIPC_ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(SHMIPC_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
 option(SHMIPC_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+option(SHMIPC_ENABLE_GO_ORACLE_TESTS "Enable tests against the fixed Go reference" OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(ShmipcProjectOptions)

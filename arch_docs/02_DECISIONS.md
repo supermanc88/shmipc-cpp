@@ -47,6 +47,21 @@
 - 供应链约束：checkout 使用只读权限、`persist-credentials: false` 和递归 submodule；版本采用 2026-08-18 官方仓库当前示例的 `actions/checkout@v7`。
 - 证据：`.github/workflows/ci.yml:1-89`；提交 `eeae84e` 的 GitHub Actions run [`32116398237`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32116398237) 总结论为 success，六个矩阵作业及其 Configure/Build/Test 步骤全部成功，常规四项 Verify installation 成功。
 
+### D-008：Go oracle 通过 overlay 访问固定上游内部编码器
+
+- 状态：已实现，待首轮云端验证
+- 理由：`header.encode` 与事件常量未导出；复制算法不能构成独立 oracle，直接向 submodule 写测试文件又会污染固定参考实现。
+- 决策：runner 先严格校验 submodule commit，再用 Go overlay 将外部 test source 映射为上游 package 的虚拟 `_test.go`，从而直接调用真实未导出符号且不修改 submodule。
+- fixture：`tests/data/golden/control_headers.txt` 全量覆盖事件类型 0..9，并使用多字节 length 探针锁定大端布局；当前只证明 header primitive，不外推 event body 或状态机兼容。
+- 证据：`tools/go_oracle/run_control_header_oracle.go:13-68`、`control_header_oracle_test.gotxt:13-85`、`tests/control_header_golden_test.cpp`；本机三项 CTest 和远端两项 C++ CTest/ASan 均通过。
+
+### D-009：自动化可完整验收的切片允许自测后直接本地提交
+
+- 状态：已接受
+- 授权：用户明确允许稳定自动化测试可验证的改动在自测通过后直接 commit，无需逐次确认。
+- 边界：需要用户参与设备、交互或主观判断的测试仍须等待；`git push`、发布、PR 等远程写操作不包含在该授权内。
+- 工作流：具体门禁见 `docs/PROJECT_WORKFLOW.md` 的“单切片执行闭环”。
+
 ### D-004：v2 和 v3 是两个必须分别验收的握手路径
 
 - 状态：已验证
@@ -103,3 +118,5 @@
 - 2026-08-18：用户安装远端 `libasan` 后，GCC 8.5 独立 ASan 构建与 `shmipc.version` 测试通过；修正原“远端 sanitizer 全部缺失”为“ASan 可用，UBSan/TSan 仍缺运行库”。证据：`CMakeLists.txt:16-18` 定义三个独立选项，`cmake/ShmipcProjectOptions.cmake:28-50` 组装 sanitizer flags；影响文档：本文件、`01_OVERVIEW.md`、`dirs/root.md`、`docs/PROJECT_WORKFLOW.md`、`docs/SHMIPC_CPP_PORTING_PLAN.md`。
 - 2026-08-18：新增 Linux CI 分层矩阵；常规作业覆盖 GCC/Clang × Debug/Release，Sanitizer 作业覆盖 ASan+UBSan 与 TSan。证据：`.github/workflows/ci.yml:1-89`；影响文档：`00_INDEX.md`、`01_OVERVIEW.md`、`dirs/root.md`、`graphs/relations.md`、项目工作流与移植计划。
 - 2026-08-18：提交 `eeae84e` 的首轮 GitHub Actions run `32116398237` 完整成功，验证六项 CI 矩阵均非跳过且步骤级通过；`S-0002` 从“待云端验证”转为“已验证”。影响文档：本文件、`01_OVERVIEW.md`、`dirs/root.md`、项目工作流与移植计划。
+- 2026-08-18：新增固定 Go commit 检查、overlay oracle、10 类 control-header golden 和 C++ fixture 消费测试；本机 oracle/C++ 测试与远端 GCC 8.5/ASan 通过。证据：`tools/go_oracle/`、`tests/data/golden/control_headers.txt`、`tests/control_header_golden_test.cpp`；影响文档：索引、概要、根目录、关系图、项目计划/工作流及新增回归指南/ADR/功能矩阵。
+- 2026-08-18：用户授权自动化可完整验收的切片在自测通过后直接创建本地 commit，同时保留人工测试与远程写操作的授权边界。影响文档：本文件、项目工作流和移植计划。

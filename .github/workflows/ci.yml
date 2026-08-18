@@ -87,3 +87,32 @@ jobs:
 
       - name: Test
         run: ${{ matrix.runtime_options }} ctest --test-dir build/sanitizer --output-on-failure
+
+  go-oracle:
+    name: Go control-header oracle
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.10'
+          cache: false
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build/oracle -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DSHMIPC_WARNINGS_AS_ERRORS=ON
+          -DSHMIPC_ENABLE_GO_ORACLE_TESTS=ON
+
+      - name: Build
+        run: cmake --build build/oracle --parallel
+
+      - name: Test
+        run: ctest --test-dir build/oracle --output-on-failure

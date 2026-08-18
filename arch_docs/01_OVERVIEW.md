@@ -30,6 +30,7 @@
 | 服务/客户端管理 | `listener.go`, `session_manager.go`, `net_listener.go` | 监听、连接池、Stream 复用、兼容适配、热重启 |
 | Linux 事件层 | `event_dispatcher*.go`, `epoll_linux*.go`, `sys_memfd_create_linux.go` | epoll ET、非阻塞写、memfd 系统调用 |
 | 验证资产 | `*_test.go`, `bench_test.go`, `example/` | 63 个 Test、26 个 Benchmark 和多种使用示例 |
+| 跨语言 oracle | `tools/go_oracle/`, `tests/data/golden/` | 固定 commit 校验、无侵入 overlay 和共享 byte fixture |
 
 ## 运行时边界
 
@@ -114,7 +115,8 @@
 - Go 参考实现构建入口：`go.mod`，Go 1.20。
 - C++ 构建入口：根目录 `CMakeLists.txt`，最低 CMake 3.16、C++17；产物 target 为 `shmipc`/`shmipc::shmipc`，支持 CTest、install/export 及 `find_package(shmipc)` package 配置。
 - C++ 质量入口：`SHMIPC_WARNINGS_AS_ERRORS`、`SHMIPC_ENABLE_ASAN`、`SHMIPC_ENABLE_UBSAN`、`SHMIPC_ENABLE_TSAN`；ASan 与 TSan 在配置阶段互斥。
-- C++ CI 入口：`.github/workflows/ci.yml`。Ubuntu 24.04 上运行 GCC/Clang × Debug/Release 四项构建、CTest 和安装；另以 GCC 分别运行 ASan+UBSan 与 TSan。
+- Go oracle 入口：`go run tools/go_oracle/run_control_header_oracle.go`；严格校验 submodule commit 后，以 overlay 调用上游 `header.encode` 核对 10 类事件控制头。CMake 可通过 `SHMIPC_ENABLE_GO_ORACLE_TESTS=ON` 将其加入 CTest。
+- C++ CI 入口：`.github/workflows/ci.yml`。Ubuntu 24.04 上运行 GCC/Clang × Debug/Release 四项构建、CTest 和安装；另以 GCC 分别运行 ASan+UBSan 与 TSan，并以 Go 1.25.10 运行 control-header oracle。
 - 本地测试：`go test ./...`；上游测试实际依赖 Linux，macOS 不构成有效通过环境。
 - Linux 交叉编译基线：`GOOS=linux GOARCH=amd64 go test -c .` 已在 2026-08-18 成功。
 - 远程执行环境：SSH 别名 `23.2`（`root@10.210.23.2`），工作目录 `/home/chm/shmipc-cpp`；Kylin Linux Advanced Server V10、kernel `4.19.90-20.0stable.x86_64`、x86_64。

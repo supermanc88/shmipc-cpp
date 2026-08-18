@@ -1,0 +1,58 @@
+# shmipc-cpp 回归测试指南
+
+## 本机快速回归
+
+```bash
+cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug \
+  -DSHMIPC_WARNINGS_AS_ERRORS=ON
+cmake --build build/debug --parallel
+ctest --test-dir build/debug --output-on-failure
+git diff --check
+```
+
+## Go control-header oracle
+
+需要 Go 1.20+、Git 和已初始化的 submodule：
+
+```bash
+go run tools/go_oracle/run_control_header_oracle.go
+```
+
+运行器首先要求 `third_party/shmipc-go` HEAD 严格等于 `55c241eea321071278d1ee7f7c46292d23e50a5b`，然后通过临时 overlay 把 oracle test 注入上游 package。它不会修改 submodule 工作区。
+
+也可通过 CTest 运行完整本机集合：
+
+```bash
+cmake -S . -B build/oracle -DCMAKE_BUILD_TYPE=Debug \
+  -DSHMIPC_WARNINGS_AS_ERRORS=ON \
+  -DSHMIPC_ENABLE_GO_ORACLE_TESTS=ON
+cmake --build build/oracle --parallel
+ctest --test-dir build/oracle --output-on-failure
+```
+
+## 远端 Linux 回归
+
+按 [PROJECT_WORKFLOW.md](PROJECT_WORKFLOW.md) 使用不保留时间戳的 rsync 同步，然后运行：
+
+```bash
+ssh 23.2 '
+  set -eu
+  cd /home/chm/shmipc-cpp
+  cmake -S . -B build/debug -G Ninja \
+    -DCMAKE_BUILD_TYPE=Debug \
+    -DSHMIPC_WARNINGS_AS_ERRORS=ON
+  cmake --build build/debug
+  ctest --test-dir build/debug --output-on-failure
+'
+```
+
+远端尚无 Go，因此默认只执行 C++ tests；Go oracle 由本机和 GitHub Actions 的独立作业承担。
+
+## 结果判定
+
+- `shmipc.version`：公共头与链接库版本一致。
+- `shmipc.control_header_golden`：C++ 测试能完整消费 10 类控制事件 fixture，字段与大端字节一致。
+- `shmipc.go_control_header_oracle`：固定 Go 上游的真实 `header.encode` 与同一 fixture 逐字节一致。
+- 任一 commit mismatch、缺行、重复/错序事件或字节差异均为失败，不允许自动更新 golden 后绕过评审。
+
+当前 `tests/data/golden/control_headers.txt` 的 SHA-256 为 `ee6379a976c47c4d81c894ecf110132884ee8e48086091338cb17a8d8765fdfa`。

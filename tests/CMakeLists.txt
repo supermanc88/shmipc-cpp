@@ -3,3 +3,26 @@ target_link_libraries(shmipc_version_test PRIVATE shmipc::shmipc)
 shmipc_apply_project_options(shmipc_version_test)
 
 add_test(NAME shmipc.version COMMAND shmipc_version_test)
+
+add_executable(shmipc_control_header_golden_test control_header_golden_test.cpp)
+shmipc_apply_project_options(shmipc_control_header_golden_test)
+target_compile_definitions(
+    shmipc_control_header_golden_test
+    PRIVATE
+        SHMIPC_CONTROL_HEADER_GOLDEN_PATH="${CMAKE_CURRENT_SOURCE_DIR}/data/golden/control_headers.txt"
+)
+add_test(NAME shmipc.control_header_golden COMMAND shmipc_control_header_golden_test)
+
+if(SHMIPC_ENABLE_GO_ORACLE_TESTS)
+    find_program(SHMIPC_GO_EXECUTABLE go)
+    if(NOT SHMIPC_GO_EXECUTABLE)
+        message(FATAL_ERROR "SHMIPC_ENABLE_GO_ORACLE_TESTS requires the Go toolchain")
+    endif()
+    add_test(
+        NAME shmipc.go_control_header_oracle
+        COMMAND
+            ${SHMIPC_GO_EXECUTABLE} run
+            ${PROJECT_SOURCE_DIR}/tools/go_oracle/run_control_header_oracle.go
+    )
+    set_tests_properties(shmipc.go_control_header_oracle PROPERTIES LABELS oracle)
+endif()

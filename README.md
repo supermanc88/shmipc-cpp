@@ -24,6 +24,12 @@ can enable `SHMIPC_ENABLE_ASAN`, `SHMIPC_ENABLE_UBSAN`, or
 `SHMIPC_ENABLE_TSAN`; AddressSanitizer and ThreadSanitizer are intentionally
 mutually exclusive.
 
+To validate the control-header golden against the pinned Go implementation:
+
+```bash
+go run tools/go_oracle/run_control_header_oracle.go
+```
+
 ## Install
 
 ```bash
@@ -37,4 +43,6 @@ The installed package exports the target `shmipc::shmipc` for use with
 
 - [Porting plan](docs/SHMIPC_CPP_PORTING_PLAN.md)
 - [Project workflow](docs/PROJECT_WORKFLOW.md)
+- [Regression test guide](docs/regression-test-guide.md)
+- [Feature matrix](docs/feature-matrix.md)
 - [Architecture index](arch_docs/00_INDEX.md)

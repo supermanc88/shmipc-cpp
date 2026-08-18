@@ -8,8 +8,8 @@
 
 ```text
 确认需求/决策 → 本地实现与快检 → rsync 到远程 Linux
-→ 远程构建与自动测试 → Go↔C++ 互操作 → 用户验收
-→ 记录证据 → 候选提交 → CI 复核
+→ 远程构建与自动测试 → Go↔C++ 互操作 → 记录证据
+→ 自动可验收则直接本地提交 / 需人工验收则等待用户 → 用户 push → CI 复核
 ```
 
 ## 2. 固定环境
@@ -98,6 +98,7 @@ Sanitizer 使用独立构建目录，不能混用编译产物：`build/asan`、`
 
 - 常规矩阵：Ubuntu 24.04，GCC/Clang × Debug/Release，执行配置、编译、CTest 和安装。
 - Sanitizer 矩阵：GCC Debug，分别执行 ASan+UBSan 和 TSan。
+- Go oracle：Go 1.25.10，校验固定 submodule commit 并运行 control-header golden test。
 - checkout 使用只读仓库权限、禁用凭据持久化，并递归拉取固定 Go submodule。
 
 远程主机用于开发中快速复核，GitHub Actions 用于独立环境门禁；两者结果分别记录，不相互冒充。2026-08-18 首轮 GitHub Actions run `32116398237` 的六个矩阵作业全部通过，建立了 `S-0002` 云端基线。
@@ -111,6 +112,14 @@ Go 与 C++ 双向互操作已确认为项目正确性验证目标，但 Go 不�
 - 仓库：`third_party/shmipc-go`
 - commit：`55c241eea321071278d1ee7f7c46292d23e50a5b`
 - 所有 fixture、对端二进制和报告必须记录该 commit。
+
+control-header oracle 的标准入口：
+
+```bash
+go run tools/go_oracle/run_control_header_oracle.go
+```
+
+该 runner 使用临时 Go overlay 访问上游 package 内部的 `header.encode`，不修改 submodule；commit 不匹配、事件集合变化或任一字节变化都会失败。详细回归命令见 [regression-test-guide.md](regression-test-guide.md)。
 
 ### 当前 Go 工具链策略
 
@@ -151,8 +160,9 @@ ssh 23.2 '
 6. 按第 3 节同步到远程。
 7. 在远程运行对应 Debug 测试；布局、并发、内存、构建系统变化进入完整门禁。
 8. 互操作切片分别运行 Go client↔C++ server 和 C++ client↔Go server，v2/v3 分开记录。
-9. 提供用户可重复的验收命令、输入和预期结果。
-10. 用户确认后更新回归与 evidence，创建候选提交；CI 通过后标记切片完成。
+9. 若稳定自动化测试已完整覆盖验收目标，自测通过并更新 evidence 后直接创建本地候选提交，无需再次等待用户确认。
+10. 若仍需要用户参与设备、交互、主观判断或其他人工测试，提供可重复的验收命令、输入和预期结果，等待用户确认后再提交。
+11. 本地 commit 不等于远程授权；`git push`、发布、PR 等远程写操作仍由用户执行或逐次明确授权。远程 CI 通过后标记切片完成。
 
 ## 7. 远程证据记录
 

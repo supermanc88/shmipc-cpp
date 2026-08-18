@@ -5,6 +5,7 @@
 - [01_OVERVIEW.md](01_OVERVIEW.md)：上游 Go 实现的顶层架构概要
 - [02_DECISIONS.md](02_DECISIONS.md)：已验证结论、风险与待决策项
 - [dirs/root.md](dirs/root.md)：当前 C++ 工程根目录
+- [dirs/tools__go_oracle.md](dirs/tools__go_oracle.md)：固定 Go control-header oracle
 - [dirs/third_party__shmipc-go.md](dirs/third_party__shmipc-go.md)：Go 参考实现文件映射
 - [files/third_party__shmipc-go__const.go.md](files/third_party__shmipc-go__const.go.md)：协议与布局常量
 - [files/third_party__shmipc-go__protocol_event.go.md](files/third_party__shmipc-go__protocol_event.go.md)：控制协议事件格式
@@ -24,6 +25,7 @@
 | `include/shmipc/` | [dirs/root.md](dirs/root.md) | ✅ | #public-api | 公共 C++ 头文件入口 |
 | `src/` | [dirs/root.md](dirs/root.md) | ✅ | #implementation | C++ 库实现；当前仅版本接口 |
 | `tests/` | [dirs/root.md](dirs/root.md) | ✅ | #tests | CTest 自动测试入口 |
+| `tools/go_oracle/` | [dirs/tools__go_oracle.md](dirs/tools__go_oracle.md) | ✅ | #go #oracle #golden | 固定 commit 校验与 control-header oracle |
 | `third_party/` | — | ✅ | #third-party | 外部参考实现聚合目录 |
 | `third_party/shmipc-go/` | [dirs/third_party__shmipc-go.md](dirs/third_party__shmipc-go.md) | ✅ | #go #reference #oss | 用户明确要求分析的固定上游源码 |
 | `third_party/shmipc-go/.github/` | — | ✅ | #ci | Go 测试与 lint 工作流 |
@@ -39,6 +41,9 @@
 | `include/shmipc/version.hpp` | ✅ | #public-api #version | 当前最小公共 API 和版本声明 |
 | `src/version.cpp` | ✅ | #implementation #version | 版本 API 实现 |
 | `tests/version_test.cpp` | ✅ | #test | 无第三方依赖的首个 library test |
+| `tests/control_header_golden_test.cpp` | ✅ | #test #protocol #golden | C++ 侧消费 control-header fixture |
+| `tests/data/golden/control_headers.txt` | ✅ | #protocol #golden | 事件 0..9 的 8 字节控制头基线 |
+| `tools/go_oracle/run_control_header_oracle.go` | ✅ | #go #oracle | 固定 commit 检查与无侵入 overlay runner |
 | `third_party/shmipc-go/const.go` | ✅ | #protocol #constants | 协议版本、共享内存模式、默认容量和头部尺寸 |
 | `third_party/shmipc-go/protocol_event.go` | ✅ | #wire-format | 8 字节大端控制头和事件类型 |
 | `third_party/shmipc-go/protocol_initializer.go` | ✅ | #handshake | v2/v3 初始化状态机 |
@@ -59,6 +64,7 @@
 | 功能/意图 | 主要实现 | 计划需求 |
 |---|---|---|
 | v2 `/dev/shm` 握手 | `protocol_initializer.go`, `protocol_manager.go` | `COMP-001`, `PROTO-001` |
+| 控制头 golden/oracle | `tools/go_oracle/`, `tests/data/golden/control_headers.txt` | `PROTO-001` |
 | v3 `memfd` + SCM_RIGHTS | `protocol_initializer.go`, `protocol_manager.go`, `block_io.go` | `COMP-002`, `PLAT-002` |
 | 共享内存分配与回收 | `buffer_manager.go`, `buffer_slice.go`, `buffer.go` | `SHM-001..004` |
 | 批量 IO 队列 | `queue.go`, `session.go`, `protocol_manager.go` | `QUEUE-001..003` |
@@ -69,7 +75,7 @@
 
 ## 分析进度
 
-- 已完成：顶层模块、协议头、握手、共享内存布局、队列、buffer 生命周期、Session/Stream 主链路、公开 API、测试与 CI 基线；C++17/CMake 最小骨架已在 macOS 与远端 Linux/GCC 8.5 验证。
+- 已完成：顶层模块、协议头、握手、共享内存布局、队列、buffer 生命周期、Session/Stream 主链路、公开 API、测试与 CI 基线；C++17/CMake 骨架和首个 Go control-header oracle 已在本机与远端验证。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
 - 待验证：C++ 与 Go 的双向互操作、共享内存原子内存序、`bufferList.counter` 偏移差异。固定 Go 基线已在远程 Linux x86_64 主机完整通过。
 
