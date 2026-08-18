@@ -70,6 +70,12 @@ target_include_directories(shmipc_buffer_pool_test PRIVATE ${PROJECT_SOURCE_DIR}
 shmipc_apply_project_options(shmipc_buffer_pool_test)
 add_test(NAME shmipc.buffer_pool COMMAND shmipc_buffer_pool_test)
 
+add_executable(shmipc_buffer_io_test buffer_io_test.cpp)
+target_link_libraries(shmipc_buffer_io_test PRIVATE shmipc::shmipc)
+target_include_directories(shmipc_buffer_io_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+shmipc_apply_project_options(shmipc_buffer_io_test)
+add_test(NAME shmipc.buffer_io COMMAND shmipc_buffer_io_test)
+
 add_executable(shmipc_buffer_pool_interop_helper buffer_pool_interop_helper.cpp)
 target_link_libraries(shmipc_buffer_pool_interop_helper PRIVATE shmipc::shmipc)
 target_include_directories(shmipc_buffer_pool_interop_helper PRIVATE ${PROJECT_SOURCE_DIR}/src)

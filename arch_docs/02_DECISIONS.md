@@ -142,6 +142,15 @@
 - 唤醒：`mark_working` 仅在 `0→1` CAS 成功时要求发送 Polling；consumer 清零后复查队列，若竞争期间已有数据则恢复 1 并继续消费，避免丢失唤醒。
 - 证据：`third_party/shmipc-go/queue.go:235-296`、`src/shm/shared_queue.cpp:74-173`、`tests/shared_queue_test.cpp:20-253`、`tools/go_oracle/control_header_oracle_test.gotxt:116-163`。
 
+### D-019：Buffer IO 仅在单 slice 路径借用共享内存
+
+- 状态：本机与远端已验证；等待本批云端门禁
+- 读取边界：`read_bytes/peek` 完全落在当前 slice 时返回 borrowed view 并 pin；跨 slice 时复制为 owned view。`read_byte`、`read_string` 与 `discard` 只复制/推进，不产生新 pin。
+- 生命周期：借用 view 在 `release_previous_read` 或 Reader 析构后失效；owned view 独立于 Reader。已耗尽且未 pinned 的 slice 自动回收，Writer/Reader 析构回收未发布、未读及 pinned tokens。
+- 写入策略：大请求持续从最大档位分配，只有尾部再降到较小档位，复现 Go `allocShmBuffers`。Go oracle 在首版实现只分配一个最大 slice 后直接暴露该差异，修正后双向 20,000 字节链通过。
+- 边界：本层只表示共享内存 `no_buffer`，不自行切换 socket；per-Stream sticky fallback 留给 Stream 集成，以维护共享路径与控制路径的顺序。
+- 证据：`third_party/shmipc-go/buffer.go`、`src/shm/buffer_io.cpp:42-491`、`tests/buffer_io_test.cpp:34-228`、`tests/buffer_pool_interop_helper.cpp:18-85`；本机 Go oracle/ASan+UBSan/TSan 与远端 GCC 8.5 Debug/ASan 通过。
+
 ### D-004：v2 和 v3 是两个必须分别验收的握手路径
 
 - 状态：已验证
@@ -214,3 +223,4 @@
 - 2026-08-18：提交 `281d024` 的 GitHub Actions run `32129419428` 七项作业全部成功，包含 Linux TSan、ASan+UBSan、GCC/Clang Debug/Release 与 Go 双向 chain oracle；`S-0201..0203` 云端门禁关闭。
 - 2026-08-18：`S-0204` 新增 `SharedQueue`，按上游“本地 producer mutex + 共享 seq_cst head/tail + 单 consumer”模型实现 MPSC、batch 与 working flag；4 producer 并发、父子进程环绕、1,000 轮唤醒竞争、双向 Go oracle 和远端 amd64 20 轮压力通过。证据：`src/shm/shared_queue.*`、`tests/shared_queue*`、Go oracle；影响文档：索引、概要、本文件、root/shm/oracle 目录、shared queue/atomic 文件、关系图、计划、工作流、回归指南和功能矩阵。
 - 2026-08-18：提交 `4a0ef5c` 的 GitHub Actions run `32131088262` 七项作业全部成功，包含 Linux TSan、ASan+UBSan 与 Go 双向 queue oracle；`S-0204` 云端门禁关闭。
+- 2026-08-18：`S-0205` 新增 BufferWriter/Reader，确定单 slice 借用并 pin、跨 slice owned copy、byte/string/discard 不 pin，以及显式 release + RAII 回收语义；Go oracle 促使分档分配修正为持续最大档位。本机 oracle/ASan+UBSan/TSan 与远端 GCC 8.5 Debug/ASan 通过，等待云端门禁。影响文档：索引、概要、本文件、root/shm/oracle 目录、buffer IO 文件、关系图、计划、回归指南和功能矩阵。

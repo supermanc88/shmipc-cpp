@@ -120,6 +120,7 @@
 - C++ buffer 布局入口：`src/shm/buffer_layout.hpp`。显式定义 8 字节 manager、36 字节 list 与 20 字节 slice header；creator 与 mapper 的本地净 pop/push counters 分别位于 `+20/+24`，普通布局访问使用 `memcpy`。
 - C++ mapping 入口：`src/shm/shared_memory_region.hpp`。move-only owner 统一管理 `munmap`、memfd descriptor 与创建端路径清理；文件 mapper 不 unlink，memfd API 显式区分 borrowed/transferred descriptor。
 - C++ buffer pool 入口：`src/shm/buffer_pool.hpp`。单 slice 从最小合适档位开始，chain 从最大档位向下分配；size/head/tail/counters 使用 lock-free seq_cst 原子，publish/adopt 以绝对 offset 在进程间转移链式 slice 所有权。
+- C++ Buffer IO 入口：`src/shm/buffer_io.hpp`。Writer 复现 Go 的最大档位连续分配策略并发布 chain；Reader 对单片返回 pinned 借用 view、对跨片返回 owned copy，`release_previous_read` 与 RAII 析构负责回收。
 - Go oracle 入口：`go run tools/go_oracle/run_control_header_oracle.go`；严格校验 submodule commit 后，以 overlay 调用上游 header、metadata 与 fallback 编码器核对三份 golden。CMake 可通过 `SHMIPC_ENABLE_GO_ORACLE_TESTS=ON` 将其加入 CTest。
 - C++ CI 入口：`.github/workflows/ci.yml`。Ubuntu 24.04 上运行 GCC/Clang × Debug/Release 四项构建、CTest 和安装；另以 GCC 分别运行 ASan+UBSan 与 TSan，并以 Go 1.25.10 运行协议/数据平面 oracle。
 - 本地测试：`go test ./...`；上游测试实际依赖 Linux，macOS 不构成有效通过环境。
@@ -137,6 +138,7 @@
 - `S-0202` 验证：单进程分级 pool 已覆盖乱序配置排序、最小档位选择、耗尽后大档位回退、全部回收、creator/mapper counter、角色错配 token 和损坏 head/tail/size/used-length。
 - `S-0203` 验证：本机 20 轮、远端 10 轮双进程并发分配回收通过；双向 oracle 完成 C++→Go→C++ 两条 20,000 字节链并恢复 free-list/counters；提交 `281d024` 的 run `32129419428` 七项作业全部成功。
 - `S-0204` 验证：4 producer/单 consumer 并发 20,000 elements、父子进程 20,000 次环绕、1,000 轮 working 竞争和双向 Go↔C++ 各 1,000 elements 通过；提交 `4a0ef5c` 的 run `32131088262` 七项作业全部成功。
+- `S-0205` 验证：reserve/write/publish、单 slice 零拷贝、跨 slice owned copy、peek、byte/string/discard、pin/release 与析构回收已通过本机 Go oracle 10/10、ASan+UBSan 9/9、TSan 9/9，以及远端 GCC 8.5 Debug/ASan 9/9；云端门禁等待本批 push。
 - 时钟注意：本机当前比远端快约 2 分 20 秒；同步时不得保留本机文件时间戳，否则 Ninja 会反复重新生成。标准命令见 `PROJECT_WORKFLOW.md`。
 - Linux 运行基线：本机用 Go 1.25.10 交叉编译固定提交的 amd64 测试二进制，rsync 至远端后完整测试 `PASS`、退出码 0；覆盖 v2、v3/memfd、队列、Stream/Session 和热重启路径。
 - CI：`.github/workflows/tests.yaml` 在 Ubuntu 运行单测/benchmark，并在自托管 Linux 上覆盖 Go 1.21–1.25；`.github/workflows/pre_check.yaml` 运行许可证、拼写和 golangci-lint。

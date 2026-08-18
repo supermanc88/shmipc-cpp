@@ -19,6 +19,7 @@ graph TD
   buffer_layout["src/shm/buffer_layout"]
   mapping["src/shm/shared_memory_region"]
   pool["src/shm/buffer_pool"]
+  buffer_io["src/shm/buffer_io"]
   atomic["src/shm/atomic_word"]
   interop["C++/Go buffer-chain oracle"]
   queue_interop["C++/Go queue oracle"]
@@ -48,7 +49,10 @@ graph TD
   pool -- uses --> buffer_layout
   pool -- manages --> pool_bytes["tiered free lists / allocations"]
   pool -- uses --> atomic
+  buffer_io -- allocates/publishes/adopts/recycles --> pool
+  buffer_io -- returns --> views["borrowed single-slice / owned cross-slice views"]
   interop -- publishes/adopts --> pool
+  interop -- writes/reads --> buffer_io
   interop -- calls --> upstream
   queue_interop -- puts/pops --> shared_queue
   queue_interop -- calls --> upstream

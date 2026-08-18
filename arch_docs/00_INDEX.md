@@ -13,6 +13,7 @@
 - [files/src__shm__buffer_layout.hpp.md](files/src__shm__buffer_layout.hpp.md)：buffer 布局常量、角色 counter 与完整接口
 - [files/src__shm__shared_memory_region.hpp.md](files/src__shm__shared_memory_region.hpp.md)：file/memfd RAII、错误与所有权接口
 - [files/src__shm__buffer_pool.hpp.md](files/src__shm__buffer_pool.hpp.md)：跨进程原子 pool、链式 slice 与完整接口
+- [files/src__shm__buffer_io.hpp.md](files/src__shm__buffer_io.hpp.md)：连续 Buffer IO、零拷贝与 pin/release 生命周期
 - [files/src__shm__atomic_word.hpp.md](files/src__shm__atomic_word.hpp.md)：共享 32/64 位原子 primitive
 - [files/src__shm__shared_queue.hpp.md](files/src__shm__shared_queue.hpp.md)：MPSC queue 与 working flag
 - [dirs/third_party__shmipc-go.md](dirs/third_party__shmipc-go.md)：Go 参考实现文件映射
@@ -34,7 +35,7 @@
 | `include/shmipc/` | [dirs/root.md](dirs/root.md) | ✅ | #public-api | 公共 C++ 头文件入口 |
 | `src/` | [dirs/root.md](dirs/root.md) | ✅ | #implementation | C++ 库实现入口 |
 | `src/protocol/` | [dirs/src__protocol.md](dirs/src__protocol.md) | ✅ | #protocol #codec #safety | header、metadata 与 fallback 生产编解码 |
-| `src/shm/` | [dirs/src__shm.md](dirs/src__shm.md) | ✅ | #shared-memory #layout #mmap | 显式布局与 file/memfd RAII mapping |
+| `src/shm/` | [dirs/src__shm.md](dirs/src__shm.md) | ✅ | #shared-memory #layout #mmap #zero-copy | 显式布局、mapping、pool、queue 与 Buffer IO |
 | `tests/` | [dirs/root.md](dirs/root.md) | ✅ | #tests | CTest 自动测试入口 |
 | `tools/go_oracle/` | [dirs/tools__go_oracle.md](dirs/tools__go_oracle.md) | ✅ | #go #oracle #golden | 固定 commit 校验与协议/数据平面 oracle |
 | `third_party/` | — | ✅ | #third-party | 外部参考实现聚合目录 |
@@ -61,6 +62,8 @@
 | `src/shm/shared_memory_region.cpp` | ✅ | #mmap #memfd #file | MAP_SHARED 创建、映射与清理实现 |
 | `src/shm/buffer_pool.hpp` | ✅ | #shared-memory #allocator #ownership | 原子 pool、move-only token 与 chain API |
 | `src/shm/buffer_pool.cpp` | ✅ | #buffer #free-list #atomic | CAS 分配回收、publish/adopt 与严格校验 |
+| `src/shm/buffer_io.hpp` | ✅ | #buffer #zero-copy #lifetime | Writer/Reader、view、pin/release 与错误接口 |
+| `src/shm/buffer_io.cpp` | ✅ | #buffer #copy #raii | 档位写入、单片零拷贝、跨片复制与回收 |
 | `src/shm/atomic_word.hpp` | ✅ | #atomic #cross-process #seq-cst | lock-free 32/64 位共享原子 primitive |
 | `src/shm/shared_queue.hpp` | ✅ | #queue #mpsc #working | MPSC put/pop、batch 与 working flag 接口 |
 | `src/shm/shared_queue.cpp` | ✅ | #queue #atomic #interop | 本地 producer mutex、共享原子及唤醒状态机 |
@@ -73,6 +76,7 @@
 | `tests/buffer_layout_test.cpp` | ✅ | #test #layout #buffer | manager/list/slice golden 与错误路径 |
 | `tests/shared_memory_region_test.cpp` | ✅ | #test #mmap #memfd | 双视图、move、unlink 与 FD ownership 测试 |
 | `tests/buffer_pool_test.cpp` | ✅ | #test #allocator #corruption | 档位回退、角色 ownership、耗尽回收与损坏 header |
+| `tests/buffer_io_test.cpp` | ✅ | #test #zero-copy #lifetime | Writer/Reader、跨片慢路径、pin/release 与 RAII |
 | `tests/buffer_pool_interop_helper.cpp` | ✅ | #test #interop #chain | Go oracle 调用的 C++ 双向 chain helper |
 | `tests/data/golden/control_headers.txt` | ✅ | #protocol #golden | 事件 0..9 的 8 字节控制头基线 |
 | `tests/data/golden/shm_metadata.txt` | ✅ | #protocol #golden | v2 文件路径与 v3 memfd metadata 基线 |
@@ -107,6 +111,7 @@
 | C++ buffer layout 与损坏链验证 | `src/shm/buffer_layout.*`, `tests/data/golden/buffer_layout.txt`, `tests/data/corpus/layout_corruption.txt` | `SHM-001`, `SHM-004` |
 | C++ file/memfd mapping | `src/shm/shared_memory_region.*`, `tests/shared_memory_region_test.cpp` | `SHM-001`, `PLAT-002` |
 | C++ 分级 buffer 分配回收 | `src/shm/buffer_pool.*`, `tests/buffer_pool_test.cpp` | `SHM-002` |
+| C++ 连续 Buffer IO 与零拷贝生命周期 | `src/shm/buffer_io.*`, `tests/buffer_io_test.cpp` | `SHM-003` |
 | Go↔C++ 链式 slice 互操作 | `tests/buffer_pool_interop_helper.cpp`, `tools/go_oracle/control_header_oracle_test.gotxt` | `SHM-003` |
 | 批量 IO 队列 | `queue.go`, `session.go`, `protocol_manager.go` | `QUEUE-001..003` |
 | C++ queue layout accessors | `src/shm/queue_layout.*`, `tests/data/golden/queue_layout.txt` | `QUEUE-001..003` |
@@ -118,9 +123,9 @@
 
 ## 分析进度
 
-- 已完成：上游架构分析、M0、M1；M2 `S-0201..0204` 已由 run `32131088262` 完整验收，当前进入 `S-0205`。
+- 已完成：上游架构分析、M0、M1；M2 `S-0201..0204` 已由 run `32131088262` 完整验收，`S-0205` 已通过本机/远端/Go oracle，等待本批云端门禁。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
-- 待验证：完整 Session 的 Go↔C++ 双向互操作，以及 BufferReader/Writer 的 pin/release 生命周期。buffer pool 与 queue 的原子内存序、counter/working 语义和双向数据平面已云端验证。
+- 待验证：完整 Session 的 Go↔C++ 双向互操作，以及 `S-0205` 的云端 Linux 编译器/Sanitizer 矩阵。BufferReader/Writer pin/release 已本地和远端验证；pool/queue 原子与双向数据平面已云端验证。
 
 ## 状态标记
 

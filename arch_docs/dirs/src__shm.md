@@ -2,7 +2,7 @@
 
 ## Summary
 
-承载共享内存布局、映射与数据平面实现。当前已具备 queue/buffer 显式布局、RAII mapping、跨进程原子 buffer pool，以及可与 Go 双向互操作的 MPSC queue 与 working flag 状态机。
+承载共享内存布局、映射与数据平面实现。当前已具备 queue/buffer 显式布局、RAII mapping、跨进程原子 buffer pool、零拷贝 Buffer IO，以及可与 Go 双向互操作的 MPSC queue 与 working flag 状态机。
 
 ## Directory Contents
 
@@ -16,6 +16,8 @@
 | `buffer_layout.cpp` | C++ 实现 | ✅ | buffer native-endian 访问与 checked region size |
 | `buffer_pool.hpp` | 内部头文件 | ✅ | 分级 pool、move-only allocation token 与错误接口 |
 | `buffer_pool.cpp` | C++ 实现 | ✅ | 原子分配回收、链式 publish/adopt 和完整性检查 |
+| `buffer_io.hpp` | 内部头文件 | ✅ | Writer/Reader、借用/拥有 view、pin/release 与错误接口 |
+| `buffer_io.cpp` | C++ 实现 | ✅ | 分档写入、单片零拷贝、跨片复制与 RAII 回收 |
 | `atomic_word.hpp` | 内部头文件 | ✅ | always-lock-free 32/64 位 seq_cst 共享原子 primitive |
 | `shared_memory_region.hpp` | 内部头文件 | ✅ | move-only mapping、错误模型及显式 FD/路径所有权 |
 | `shared_memory_region.cpp` | C++ 实现 | ✅ | file/memfd 创建、映射和 RAII 清理 |
@@ -53,6 +55,9 @@
 - pool 的 size/head/tail/counters 使用 lock-free seq_cst 32 位原子；tier capacity 与 list 起点必须保持 4 字节对齐。
 - slice 普通字段先写完，再通过原子 size 发布；消费者只有成功 CAS head 后才取得 slice 独占权。
 - chain next offset 是共享内存绝对 offset，与 free-list 内部使用的 list-relative offset 不同。
+- Writer 对大请求持续使用最大档位，尾部才降档；这与 Go `allocShmBuffers` 一致。
+- Reader 仅对单 slice `read_bytes/peek` 返回借用 view 并 pin；跨 slice 结果拥有副本，byte/string/discard 不创建 pin。
+- `release_previous_read` 或 Reader 析构后不得再访问借用 view；pool/mapping 必须比 Buffer IO 对象活得更久。
 - queue MPSC 是单进程多 producer、本地 mutex 串行化，对端单 consumer；不支持多个进程共同生产同一方向。
 - queue 先写 element 后原子发布 tail；consumer 清 working 后必须复查 empty，竞争时恢复 working 并继续消费。
 
@@ -75,10 +80,12 @@
 - `tests/buffer_pool_interop_helper.cpp:17-75` 与 Go oracle：C++→Go、Go→C++ 两方向 20,000 字节链通过。
 - `src/shm/shared_queue.cpp:74-173` 与 `tests/shared_queue_test.cpp:20-253`：MPSC、batch、环绕及 working 竞争。
 - `tests/shared_queue_interop_helper.cpp:14-64` 与 Go oracle `:116-163`：双向 1,000 element queue 与 working flag 通过。
+- `src/shm/buffer_io.cpp:42-491` 与 `tests/buffer_io_test.cpp:34-228`：Writer/Reader、零拷贝/跨片慢路径、pin/release、错误与 RAII 回收。
+- `tests/buffer_pool_interop_helper.cpp:18-85` 与 Go oracle：真实 BufferWriter/Reader 双向处理 20,000 字节链；本机 oracle、Sanitizer 及远端 GCC 8.5 Debug/ASan 通过。
 
 ## Guesses & Uncertainties
 
-- amd64 `+4/+12` 非自然对齐 64 位原子已在远端 GCC 8.5 Debug/ASan 及 20 轮压力中验证；仍需下一批云端 Linux TSan 证据。
+- `S-0205` 的本机和远端证据已通过；完整 Linux 编译器/Sanitizer 云端门禁等待本批 push。
 - buffer list counter 偏移已确定，语义已修正为 creator/mapper 各自的本地净 pop/push 值。
 
 ## Links

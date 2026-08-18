@@ -58,7 +58,8 @@ ssh 23.2 '
 - `shmipc.buffer_layout`：manager/list/slice offsets、region size、creator/mapper counter 字段及截断/非法字段检查。
 - `shmipc.shared_memory_region`：file 双视图、move/unlink 生命周期，以及 Linux memfd 的 borrowed/transferred FD 所有权；非 Linux 明确验证 unsupported。
 - `shmipc.buffer_pool`：tier 配置与排序、原子分配回收、父子进程并发压力、双向 chain publish/adopt、角色净 counter，以及损坏 head/tail/size/used-length 防护。
-- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用 C++ helpers 双向传递 20,000 字节 slice chain 和各 1,000 个 queue elements，验证 payload、回收、free-list、角色净 counter、queue 方向翻转及 working flag。
+- `shmipc.buffer_io`：reserve/write/publish、单 slice borrowed view、跨 slice owned copy、peek/byte/string/discard、pin/release、逐 slice 推进、越界和 RAII 回收。
+- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用真实 C++ BufferWriter/Reader helper 双向传递 20,000 字节 slice chain，并传递各 1,000 个 queue elements，验证 payload、回收、free-list、角色净 counter、queue 方向翻转及 working flag。
 - 任一 commit mismatch、缺行、重复/错序事件或字节差异均为失败，不允许自动更新 golden 后绕过评审。
 
 当前 golden 的 SHA-256：

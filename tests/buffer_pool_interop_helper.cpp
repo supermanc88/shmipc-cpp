@@ -1,7 +1,6 @@
-#include "shm/buffer_pool.hpp"
+#include "shm/buffer_io.hpp"
 #include "shm/shared_memory_region.hpp"
 
-#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -25,21 +24,14 @@ bool create_for_go(const std::string& path) {
     auto pool = shmipc::shm::initialize_buffer_pool(
         region.value.data(), region.value.size(),
         {{4096U, 60U}, {8192U, 40U}}, shmipc::shm::BufferListRole::creator);
-    auto chain = pool ? pool.value.allocate_chain(payload_size)
-                      : shmipc::shm::BufferChainResult{};
-    if (!pool || !chain) {
+    if (!pool) {
         return false;
     }
-    std::vector<std::uint32_t> sizes;
-    auto remaining = payload_size;
-    for (auto& allocation : chain.value.allocations) {
-        const auto size = static_cast<std::uint32_t>(
-            std::min<std::uint64_t>(remaining, allocation.capacity()));
-        sizes.push_back(size);
-        std::fill_n(allocation.data(), size, cpp_marker);
-        remaining -= size;
-    }
-    auto published = pool.value.publish_chain(std::move(chain.value), sizes);
+    std::vector<std::uint8_t> payload(payload_size, cpp_marker);
+    shmipc::shm::BufferWriter writer(pool.value);
+    const auto written = writer.write_bytes(payload.data(), payload.size());
+    auto published = written ? writer.publish()
+                             : shmipc::shm::PublishedBufferChainResult{};
     if (!published || published.value.data_size != payload_size) {
         return false;
     }
@@ -55,24 +47,42 @@ bool verify_from_go(const std::string& path, std::uint32_t root_offset) {
                        : shmipc::shm::BufferPoolCreateResult{};
     auto chain = pool ? pool.value.adopt_chain(root_offset)
                       : shmipc::shm::BufferChainResult{};
-    if (!region || !pool || !chain || chain.value.data_size != payload_size) {
+    auto reader = chain ? shmipc::shm::make_buffer_reader(
+                              pool.value, std::move(chain.value))
+                        : shmipc::shm::BufferReaderResult{};
+    if (!region || !pool || !chain || !reader ||
+        reader.value.remaining() != payload_size) {
+        std::cerr << "setup region=" << static_cast<bool>(region)
+                  << " pool=" << static_cast<bool>(pool)
+                  << " chain=" << static_cast<bool>(chain)
+                  << " reader=" << static_cast<bool>(reader)
+                  << " remaining=" << reader.value.remaining() << '\n';
         return false;
     }
-    std::uint64_t remaining = payload_size;
-    for (const auto& allocation : chain.value.allocations) {
-        const auto size = static_cast<std::uint32_t>(
-            std::min<std::uint64_t>(remaining, allocation.capacity()));
-        if (allocation.data()[0] != go_marker ||
-            allocation.data()[size - 1U] != go_marker) {
+    const auto payload = reader.value.read_bytes(payload_size);
+    if (!payload || payload.value.is_zero_copy()) {
+        std::cerr << "read error=" << shmipc::shm::to_string(payload.error)
+                  << " zero_copy=" << payload.value.is_zero_copy() << '\n';
+        return false;
+    }
+    for (std::size_t index = 0; index < payload.value.size(); ++index) {
+        if (payload.value.data()[index] != go_marker) {
+            std::cerr << "marker mismatch at " << index << '\n';
             return false;
         }
-        remaining -= size;
     }
-    return pool.value.recycle_chain(std::move(chain.value)) ==
-               shmipc::shm::BufferPoolError::none &&
-           pool.value.all_returned() &&
-           shmipc::shm::map_buffer_pool(region.value.data(), region.value.size(),
-                                        shmipc::shm::BufferListRole::mapper);
+    const auto release = reader.value.release_previous_read();
+    const auto returned = pool.value.all_returned();
+    const auto remapped = shmipc::shm::map_buffer_pool(
+        region.value.data(), region.value.size(),
+        shmipc::shm::BufferListRole::mapper);
+    if (release != shmipc::shm::BufferIoError::none || !returned || !remapped) {
+        std::cerr << "release=" << shmipc::shm::to_string(release)
+                  << " returned=" << returned
+                  << " remap=" << static_cast<bool>(remapped) << '\n';
+        return false;
+    }
+    return true;
 }
 
 }  // namespace
