@@ -2,7 +2,7 @@
 
 ## Summary
 
-当前仓库已建立 C++17/CMake 可验证骨架，并已加入控制协议 codec、queue/buffer 显式布局、file/memfd RAII mapping 和单进程分级 buffer pool。静态 library target、CTest、编译告警/Sanitizer、安装导出及固定 Go oracle 均已接入；跨进程原子 allocator 和并发 queue 算法尚未实现。
+当前仓库已建立 C++17/CMake 可验证骨架，并已加入控制协议 codec、共享布局、RAII mapping 和跨进程原子分级 buffer pool。buffer pool 的链式 slice 已完成 Go↔C++ 双向 oracle；并发 queue 算法尚未实现。
 
 ## Directory Contents（深度=1）
 
@@ -38,7 +38,7 @@
 - `src/shm/buffer_layout.cpp:82-225` 实现 manager/list/slice 布局；Go 双视图 probe 证明 `+20/+24` 是 creator/mapper 独立 counter。
 - 提交 `ed4c7a8` 的 GitHub Actions run `32125329954` 七项作业全部成功，M1 完成。
 - `src/shm/shared_memory_region.cpp:100-315` 实现 move-only file/memfd mapping；`tests/shared_memory_region_test.cpp:21-137` 已在本机 AppleClang 和远端 GCC 8.5 Debug/ASan 通过。
-- `src/shm/buffer_pool.cpp:169-305,347-512` 实现单进程分级分配回收与严格映射校验；`tests/buffer_pool_test.cpp:18-216` 已在本机和远端 Debug/Sanitizer 通过。
+- `src/shm/atomic_word.hpp` 与 `buffer_pool.cpp:36-525` 实现 lock-free seq_cst 分配回收和 chain publish/adopt；父子进程压力、Sanitizer 及双向 Go oracle 通过。
 
 ## Guesses & Uncertainties
 

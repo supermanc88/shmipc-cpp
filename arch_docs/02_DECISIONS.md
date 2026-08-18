@@ -80,12 +80,13 @@
 - arm64 约束：queue manager 总映射长度必须是 16 的倍数；与 Go 映射路径一致，当前会拒绝导致总长度不对齐的 capacity。
 - 证据：`third_party/shmipc-go/queue.go:175-209`、`src/shm/queue_layout.cpp:81-192`、`tests/queue_layout_test.cpp:48-175`、`tools/go_oracle/control_header_oracle_test.gotxt:196-248`。
 
-### D-012：buffer list 的 `+20/+24` 是角色隔离 counter，C++ 必须保留
+### D-012：buffer list 的 `+20/+24` 是角色本地净操作 counter，C++ 必须保留
 
 - 状态：已验证；提交 `ed4c7a8` 的 run `32125329954` 全部成功
 - 事实：`support arm64` 提交 `8ab38be` 将原来位于 `+20/+28` 的两个 uint64 push/pop counters 改为 int32 counter；创建视图绑定 `+20`，映射视图绑定 `+24`。
 - 实验：同一内存建立 creator/mapper 两视图后，creator pop 只使 `+20` 变为 1，mapper pop 只使 `+24` 变为 1；双方各自 push 后各自 counter 归零。
-- 决策：C++ 以 `BufferListRole::creator/mapper` 显式选择 counter，不能把两者合并，也不能把 `+24` 当作待修复 typo。每端用自己的 outstanding counter 参与关闭前归还检查。
+- 修正：`S-0103` 时曾将字段解释为“各角色 outstanding 数量”；`S-0203` 的真实发送端 pop、接收端 push 链路证明该解释不完整。每个字段实际记录本角色本地 `pop - push` 净值，允许因接收对端 slice 而变负；等量双向链路后各自归零。
+- 决策：C++ 以 `BufferListRole::creator/mapper` 显式选择 counter，不能合并字段或把 `+24` 当作 typo；关闭检查复现 Go 的“free size == capacity 且本角色净计数 == 0”。
 - 布局：manager/list/slice header 分别为 8/36/20 字节；slice flags 只使用 offset 16 的低字节。
 - 证据：`third_party/shmipc-go/buffer_manager.go:341-415,417-459,604-613`、commit `8ab38be` diff、`tools/go_oracle/control_header_oracle_test.gotxt:250-344`、`src/shm/buffer_layout.cpp:77-225`。
 
@@ -113,8 +114,24 @@
 - 兼容语义：tiers 按 capacity 升序；请求从最小合适档位开始，耗尽后继续尝试更大档位；每个 free list 永远保留最后一个 sentinel，所以可分配数量为 `size - 1`。
 - 所有权：`BufferAllocation` 不可复制且只可 move-construct，记录 memory、list 与 creator/mapper 角色；只有匹配 view 可回收，成功后 token 失效。token 析构不自动回收，以便后续跨进程转移逻辑所有权。
 - 安全边界：mapper 要求 manager used-length 精确覆盖所有 lists，free-chain 节点数等于 header size，节点为 clean/free 状态；allocate/recycle 每次重新校验 head/tail 范围和 stride 对齐。
-- 并发边界：本切片使用普通 byte read-modify-write，只用于单进程无并发路径。多线程/跨进程原子 CAS 与内存序必须在 `S-0203` 实现后才能启用。
-- 证据：`src/shm/buffer_pool.hpp:11-125`、`src/shm/buffer_pool.cpp:57-512`、`tests/buffer_pool_test.cpp:18-216`；本机 AppleClang Debug/ASan+UBSan 与远端 GCC 8.5 Debug/ASan 7/7 CTest 通过。
+- 演进：该普通 read-modify-write 基线已由 `S-0203` 的 seq_cst 原子实现替代；sentinel、档位回退和 token 语义保持不变。
+- 证据：`src/shm/buffer_pool.hpp:11-156`、`src/shm/buffer_pool.cpp:191-525`、`tests/buffer_pool_test.cpp:18-258`；本机 AppleClang Debug/ASan+UBSan 与远端 GCC 8.5 Debug/ASan 7/7 CTest 通过。
+
+### D-016：共享 free-list 使用 always-lock-free 32 位 seq_cst 原子
+
+- 状态：`S-0203` 本机、远端与双向 Go oracle 已验证，待批次云端证据
+- 原子模型：size/head/tail/角色 counter 使用 GCC/Clang `__atomic` always-lock-free 32 位 primitive，统一 `__ATOMIC_SEQ_CST`，与 Go `sync/atomic` 默认顺序一致。
+- 发布顺序：pop 先原子预留 size，再以 CAS 取得 head；push 先重置独占 slice，以 CAS 推进 tail并链接旧 tail，最后原子增加 size。旧 head/tail 可能在读取后被竞争者推进，因此只有 CAS 成功决定所有权，陈旧普通字段触发重试而非损坏判定。
+- 对齐：tier capacity 必须为 4 的倍数；初始化和 mapper 都验证 size/head/tail 及 `+20/+24` counters 自然对齐。编译期拒绝非 lock-free 32 位目标。
+- 证据：`src/shm/atomic_word.hpp:9-38`、`src/shm/buffer_pool.cpp:36-525`；本机 20 轮与远端 10 轮父子进程压力、AppleClang TSan/ASan+UBSan、远端 GCC 8.5 ASan 通过。
+
+### D-017：跨进程 slice 链以 publish/adopt 转移逻辑所有权
+
+- 状态：`S-0203` 双向 Go↔C++ oracle 已验证，待批次云端证据
+- 发送端：从最大档位向下分配，写入每个 slice 的 size、in-use/has-next 和下一个绝对共享内存 offset；发布成功后发送端 tokens 失效。
+- 接收端：从 root offset 有界遍历并校验 slot、capacity、data range、in-use 和 cycle，再创建本角色 tokens；回收减少接收角色的净 counter。
+- 验收：C++ 发布 20,000 字节链供 Go 读取/回收，Go 再发布等量链供 C++ 读取/回收；两方向 payload、root/next offsets、free-list 完整性和最终两个角色 counter 均验证。
+- 证据：`src/shm/buffer_pool.cpp:282-525`、`tests/buffer_pool_interop_helper.cpp:17-75`、`tools/go_oracle/control_header_oracle_test.gotxt:18-113`。
 
 ### D-004：v2 和 v3 是两个必须分别验收的握手路径
 
@@ -130,17 +147,18 @@
 - 风险：C++ struct padding、endianness 或未对齐原子访问会造成静默破坏。
 - 对策：C++ 不直接把共享区域 reinterpret 为普通 struct；集中定义 offset、显式 load/store，并用 `static_assert` 与 byte-level golden 验证。
 
-### R-002：Go 原子操作到 C++ 内存序的映射尚未被正式规范化
+### R-002：Go 原子操作到 C++ 内存序的映射需要按数据结构分别验证
 
 - 事实：Go `sync/atomic` 默认顺序一致；C++ 若用 relaxed 可能破坏“先写 element、后发布 tail”的协议。
-- 决策建议：第一版统一使用 `std::memory_order_seq_cst`；只有在互操作压力测试和基准证明后才针对性放宽。
+- 当前状态：buffer pool 已使用 always-lock-free 32 位 seq_cst primitive，并通过双进程压力、TSan 和 Go↔C++ 链路验证；只有在互操作压力测试和基准证明后才考虑针对性放宽。
+- 剩余风险：queue 的 amd64 head/tail 位于未对齐的 64 位 offset，不能直接复用 32 位方案；在 `S-0204` 实现前需先锁定上游原子行为与目标平台策略。
 
 ### R-003：`bufferList.counter` 的创建与映射偏移不一致
 
 - 证据：`createFreeBufferList` 在 header `+20` 绑定 counter，`mappingFreeBufferList` 在 `+24` 绑定 counter；header 总长为 36。
 - 原风险：创建端与映射端观察不同计数，可能影响 unmap 前的“buffer 全部归还”检查。
-- 状态：已关闭。Go 双视图实验确认两者是各角色独立 outstanding counters；差异来自 arm64 兼容提交，不应合并。
-- 对策：C++ 保留 `+20/+24` 两字段并按本端角色选择；后续互操作关闭测试继续验证实际 Session 生命周期。
+- 状态：已关闭并在 `S-0203` 修正语义。Go 双视图确认字段按角色选择；双向跨语言链路进一步证明它们是角色本地 `pop - push` 净计数，而非严格 outstanding 数量。
+- 对策：C++ 保留 `+20/+24` 两字段并允许净值为负；完整双向链路后检查各角色归零，后续 Session 关闭测试继续验证非对称流量下的上游行为。
 
 ### R-004：上游测试在非 Linux 上不是可靠基线
 
@@ -179,7 +197,8 @@
 - 2026-08-18：提交 `34ef510` 的 GitHub Actions run `32119710781` 完整成功；Go 1.25.10 oracle 的 setup/configure/build/test 与其余六项矩阵全部通过，`S-0003` 和 M0 转为已验证。影响文档：索引、概要、本文件、根目录、oracle 目录、项目工作流、移植计划和功能矩阵。
 - 2026-08-18：新增 `S-0101` 生产 control codec，覆盖 header、事件 0..9、v2/v3 metadata 与 fallback；固定 Go 编码器和 C++ round-trip 共用三份 golden，异常输入测试覆盖截断、非法字段、错误事件、尾随字节与帧上限。本机 AppleClang Debug/ASan+UBSan 及远端 GCC 8.5 Debug/ASan 通过。证据：`src/protocol/control_codec.*`、`tests/protocol_codec_test.cpp`、`tools/go_oracle/control_header_oracle_test.gotxt:13-192`；影响文档：索引、概要、本文件、root/protocol/oracle 目录、关系图、计划、工作流、回归指南和功能矩阵。
 - 2026-08-18：提交 `603933e` 的 GitHub Actions run `32122127419` 七项作业全部成功，`S-0101` 转为已验证；新增 `S-0102` queue 显式布局访问器与双架构 golden，Go oracle 分别在 arm64/amd64 路径通过，C++ 本机与远端 GCC 8.5 Debug/ASan 通过。证据：`src/shm/queue_layout.*`、`tests/data/golden/queue_layout.txt`、`tests/queue_layout_test.cpp`；影响文档：索引、概要、本文件、root/shm/oracle 目录、关系图、计划、工作流、回归指南和功能矩阵。
-- 2026-08-18：通过提交历史和 Go creator/mapper 双视图实验关闭 `bufferList.counter +20/+24` 不确定项，确认其为 arm64 兼容后角色隔离的 outstanding counters；新增 manager/list/slice C++ 显式布局访问器。证据：上游 commit `8ab38be`、`tools/go_oracle/control_header_oracle_test.gotxt:250-344`、`src/shm/buffer_layout.*`、`tests/buffer_layout_test.cpp`；影响文档：索引、概要、本文件、root/shm/oracle 目录、关系图、计划、工作流、回归指南和功能矩阵。
+- 2026-08-18：通过提交历史和 Go creator/mapper 双视图实验关闭 `bufferList.counter +20/+24` 偏移不确定项，当时将其解释为角色隔离 outstanding counters；新增 manager/list/slice C++ 显式布局访问器。该语义解释随后在 `S-0203` 修正。证据：上游 commit `8ab38be`、`tools/go_oracle/control_header_oracle_test.gotxt:250-344`、`src/shm/buffer_layout.*`、`tests/buffer_layout_test.cpp`。
 - 2026-08-18：新增有界 buffer free-list validator 和 9 类固定损坏输入 corpus，确定性拒绝截断、溢出、非法 offset、循环、错误 tail、slice capacity 与 data range。证据：`src/shm/buffer_layout.cpp:199-240`、`tests/data/corpus/layout_corruption.txt`、`tests/buffer_layout_test.cpp:185-289`；影响文档：索引、本文件、shm 目录/文件、计划、回归指南和功能矩阵。
 - 2026-08-18：提交 `ed4c7a8` 的 GitHub Actions run `32125329954` 七项作业全部成功，M1 完成；新增 `S-0201` move-only file/memfd mapping，明确 creator/mapper 路径清理和 borrowed/transferred FD 所有权。本机 AppleClang 与远端 GCC 8.5 Debug/Sanitizer 通过。证据：`src/shm/shared_memory_region.*`、`tests/shared_memory_region_test.cpp`；影响文档：索引、概要、本文件、root/shm 目录、mapping 文件、关系图、计划、回归指南和功能矩阵。
 - 2026-08-18：新增 `S-0202` 单进程分级 buffer pool，保留上游 sentinel 与大档位回退语义，并以 move-only 角色 token、严格 free-chain/offset 校验加固回收边界。本机与远端 Debug/Sanitizer 通过。证据：`src/shm/buffer_pool.*`、`tests/buffer_pool_test.cpp`；影响文档：索引、概要、本文件、root/shm 目录、buffer pool 文件、关系图、计划、回归指南和功能矩阵。
+- 2026-08-18：`S-0203` 将 free-list 更新升级为 always-lock-free 32 位 seq_cst 原子，实现 chain allocate/publish/adopt/recycle，并以双向 Go↔C++ 20,000 字节链路验证。并发/互操作实验修正先前 counter 推断：字段是各角色本地 pop-push 净值，不是严格 outstanding 数量。证据：`src/shm/atomic_word.hpp`、`src/shm/buffer_pool.*`、`tests/buffer_pool_test.cpp`、`tests/buffer_pool_interop_helper.cpp`、Go oracle；影响文档：索引、概要、本文件、root/shm/oracle 目录、buffer pool/atomic 文件、关系图、计划、工作流、回归指南和功能矩阵。

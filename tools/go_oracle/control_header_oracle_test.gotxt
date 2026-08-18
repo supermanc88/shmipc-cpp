@@ -5,12 +5,113 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"unsafe"
 )
+
+func TestBufferPoolInterop(t *testing.T) {
+	helper := os.Getenv("SHMIPC_CPP_BUFFER_POOL_HELPER")
+	if helper == "" {
+		t.Fatal("SHMIPC_CPP_BUFFER_POOL_HELPER is not set")
+	}
+	path := filepath.Join(t.TempDir(), "buffer-pool")
+	created, err := exec.Command(helper, "create", path).CombinedOutput()
+	if err != nil {
+		t.Fatalf("C++ create failed: %v: %s", err, created)
+	}
+	cppRootText := strings.TrimSpace(string(created))
+	cppRoot, err := strconv.ParseUint(cppRootText, 10, 32)
+	if err != nil {
+		t.Fatalf("invalid C++ root %q: %v", cppRootText, err)
+	}
+
+	file, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	memory, err := syscall.Mmap(int(file.Fd()), 0, int(info.Size()),
+		syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+	file.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bm, err := mappingBufferManager(path, memory, 0)
+	if err != nil {
+		syscall.Munmap(memory)
+		t.Fatal(err)
+	}
+
+	const payloadSize = 20000
+	const cppMarker = byte(0x3c)
+	const goMarker = byte(0x6b)
+	received := 0
+	for offset := uint32(cppRoot); ; {
+		slice, err := bm.readBufferSlice(offset)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, value := range slice.data[slice.readIndex:slice.writeIndex] {
+			if value != cppMarker {
+				t.Fatalf("C++ payload marker mismatch at offset %d", offset)
+			}
+		}
+		received += slice.size()
+		hasNext := slice.hasNext()
+		next := slice.nextBufferOffset()
+		bm.recycleBuffer(slice)
+		if !hasNext {
+			break
+		}
+		offset = next
+	}
+	if received != payloadSize {
+		t.Fatalf("C++ payload size: want %d, got %d", payloadSize, received)
+	}
+
+	outbound := newSliceList()
+	if allocated := bm.allocShmBuffers(outbound, payloadSize); allocated < payloadSize {
+		t.Fatalf("Go allocated only %d bytes", allocated)
+	}
+	goRoot := outbound.front().offsetInShm
+	remaining := payloadSize
+	for slice := outbound.front(); slice != nil && remaining > 0; slice = slice.next() {
+		size := int(slice.cap)
+		if size > remaining {
+			size = remaining
+		}
+		for index := 0; index < size; index++ {
+			slice.data[index] = goMarker
+		}
+		slice.readIndex = 0
+		slice.writeIndex = size
+		slice.start = 0
+		slice.update()
+		remaining -= size
+	}
+	if remaining != 0 {
+		t.Fatalf("Go payload has %d unwritten bytes", remaining)
+	}
+	if err := syscall.Munmap(memory); err != nil {
+		t.Fatal(err)
+	}
+
+	verified, err := exec.Command(helper, "verify", path,
+		strconv.FormatUint(uint64(goRoot), 10)).CombinedOutput()
+	if err != nil {
+		t.Fatalf("C++ verify failed: %v: %s", err, verified)
+	}
+}
 
 func TestControlHeaderGolden(t *testing.T) {
 	events := []struct {

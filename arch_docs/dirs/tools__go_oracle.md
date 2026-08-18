@@ -2,7 +2,7 @@
 
 ## Summary
 
-以不修改 submodule 的方式运行固定 Go 参考实现内部 oracle，当前锁定控制协议、amd64/arm64 queue、buffer manager/list/slice 布局及角色 counter 行为。
+以不修改 submodule 的方式运行固定 Go 参考实现内部 oracle，当前锁定控制协议、queue/buffer 布局、角色 counter 行为，并驱动 C++ helper 验证双向 slice-chain 互操作。
 
 ## Directory Contents
 
@@ -20,11 +20,13 @@
 - `control_header_oracle_test.gotxt:87-142` 通过 `Session.generateShmMetadata` 验证 v2/v3；`:144-192` 通过 `fallbackDataEvent.encode` 验证 fallback。
 - `control_header_oracle_test.gotxt:196-248` 通过 `createQueueFromBytes` 的真实指针映射验证当前 `runtime.GOARCH` 对应 queue golden；Darwin arm64 与 amd64 运行路径均通过。
 - `control_header_oracle_test.gotxt:250-344` 直接计算 buffer 指针偏移，并以同一内存的 creator/mapper 两视图验证 `+20/+24` counter 独立增减。
+- `control_header_oracle_test.gotxt:18-113` 调用 C++ helper：读取并回收 C++ 发布的 20,000 字节链，再发布 Go 链供 C++ 读取回收。
+- `tests/buffer_pool_interop_helper.cpp:17-75` 是 oracle 的 C++ 创建/验证端；临时共享文件由 Go test 的 `t.TempDir()` 隔离清理。
 - 提交 `34ef510` 的 GitHub Actions run `32119710781` 在 Go 1.25.10 下完成 setup、configure、build 和 test，作业结论 success。
 
 ## Guesses & Uncertainties
 
-- 当前锁定控制协议正常编码、queue/buffer byte layout 与角色 counter 行为；握手状态机和跨语言原子语义仍属于后续切片，Go oracle 也不替代 C++ 异常输入测试。
+- 当前锁定控制协议正常编码、queue/buffer byte layout、buffer pool 32 位原子与链式 slice 双向互操作；完整握手和 queue 原子语义仍属于后续切片，Go oracle 也不替代 C++ 异常输入测试。
 - 上游 commit 升级必须显式更新 runner 常量、golden 来源和 ADR，不能静默接受。
 
 ## Links

@@ -18,6 +18,8 @@ graph TD
   buffer_layout["src/shm/buffer_layout"]
   mapping["src/shm/shared_memory_region"]
   pool["src/shm/buffer_pool"]
+  atomic["src/shm/atomic_word"]
+  interop["C++/Go buffer-chain oracle"]
   golden_test["C++ codec tests"]
 
   consumer -- includes --> public
@@ -40,6 +42,9 @@ graph TD
   mapping -- owns --> os_mapping["mmap / file FD / memfd"]
   pool -- uses --> buffer_layout
   pool -- manages --> pool_bytes["tiered free lists / allocations"]
+  pool -- uses --> atomic
+  interop -- publishes/adopts --> pool
+  interop -- calls --> upstream
   ci -- runs --> runner
 ```
 

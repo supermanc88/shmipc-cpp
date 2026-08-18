@@ -62,6 +62,11 @@ target_include_directories(shmipc_buffer_pool_test PRIVATE ${PROJECT_SOURCE_DIR}
 shmipc_apply_project_options(shmipc_buffer_pool_test)
 add_test(NAME shmipc.buffer_pool COMMAND shmipc_buffer_pool_test)
 
+add_executable(shmipc_buffer_pool_interop_helper buffer_pool_interop_helper.cpp)
+target_link_libraries(shmipc_buffer_pool_interop_helper PRIVATE shmipc::shmipc)
+target_include_directories(shmipc_buffer_pool_interop_helper PRIVATE ${PROJECT_SOURCE_DIR}/src)
+shmipc_apply_project_options(shmipc_buffer_pool_interop_helper)
+
 if(SHMIPC_ENABLE_GO_ORACLE_TESTS)
     find_program(SHMIPC_GO_EXECUTABLE go)
     if(NOT SHMIPC_GO_EXECUTABLE)
@@ -70,6 +75,8 @@ if(SHMIPC_ENABLE_GO_ORACLE_TESTS)
     add_test(
         NAME shmipc.go_protocol_oracle
         COMMAND
+            ${CMAKE_COMMAND} -E env
+            SHMIPC_CPP_BUFFER_POOL_HELPER=$<TARGET_FILE:shmipc_buffer_pool_interop_helper>
             ${SHMIPC_GO_EXECUTABLE} run
             ${PROJECT_SOURCE_DIR}/tools/go_oracle/run_control_header_oracle.go
     )

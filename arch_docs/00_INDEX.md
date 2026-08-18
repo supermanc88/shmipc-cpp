@@ -12,7 +12,8 @@
 - [files/src__shm__queue_layout.hpp.md](files/src__shm__queue_layout.hpp.md)：queue 布局常量、类型和完整接口
 - [files/src__shm__buffer_layout.hpp.md](files/src__shm__buffer_layout.hpp.md)：buffer 布局常量、角色 counter 与完整接口
 - [files/src__shm__shared_memory_region.hpp.md](files/src__shm__shared_memory_region.hpp.md)：file/memfd RAII、错误与所有权接口
-- [files/src__shm__buffer_pool.hpp.md](files/src__shm__buffer_pool.hpp.md)：单进程分级 pool、allocation token 与完整接口
+- [files/src__shm__buffer_pool.hpp.md](files/src__shm__buffer_pool.hpp.md)：跨进程原子 pool、链式 slice 与完整接口
+- [files/src__shm__atomic_word.hpp.md](files/src__shm__atomic_word.hpp.md)：共享 32 位原子 primitive
 - [dirs/third_party__shmipc-go.md](dirs/third_party__shmipc-go.md)：Go 参考实现文件映射
 - [files/third_party__shmipc-go__const.go.md](files/third_party__shmipc-go__const.go.md)：协议与布局常量
 - [files/third_party__shmipc-go__protocol_event.go.md](files/third_party__shmipc-go__protocol_event.go.md)：控制协议事件格式
@@ -57,8 +58,9 @@
 | `src/shm/buffer_layout.cpp` | ✅ | #shared-memory #buffer #bounds | buffer 布局显式访问与 checked size |
 | `src/shm/shared_memory_region.hpp` | ✅ | #shared-memory #raii #ownership | move-only mapping、FD/path 所有权与错误接口 |
 | `src/shm/shared_memory_region.cpp` | ✅ | #mmap #memfd #file | MAP_SHARED 创建、映射与清理实现 |
-| `src/shm/buffer_pool.hpp` | ✅ | #shared-memory #allocator #ownership | 分级 pool、move-only token 与错误接口 |
-| `src/shm/buffer_pool.cpp` | ✅ | #buffer #free-list #bounds | 单进程分配回收与严格映射校验 |
+| `src/shm/buffer_pool.hpp` | ✅ | #shared-memory #allocator #ownership | 原子 pool、move-only token 与 chain API |
+| `src/shm/buffer_pool.cpp` | ✅ | #buffer #free-list #atomic | CAS 分配回收、publish/adopt 与严格校验 |
+| `src/shm/atomic_word.hpp` | ✅ | #atomic #cross-process #seq-cst | lock-free 32 位共享原子 primitive |
 | `tests/version_test.cpp` | ✅ | #test | 无第三方依赖的首个 library test |
 | `tests/control_header_golden_test.cpp` | ✅ | #test #protocol #golden | C++ 侧消费 control-header fixture |
 | `tests/protocol_codec_test.cpp` | ✅ | #test #protocol #negative | metadata/fallback round-trip 与异常输入测试 |
@@ -66,6 +68,7 @@
 | `tests/buffer_layout_test.cpp` | ✅ | #test #layout #buffer | manager/list/slice golden 与错误路径 |
 | `tests/shared_memory_region_test.cpp` | ✅ | #test #mmap #memfd | 双视图、move、unlink 与 FD ownership 测试 |
 | `tests/buffer_pool_test.cpp` | ✅ | #test #allocator #corruption | 档位回退、角色 ownership、耗尽回收与损坏 header |
+| `tests/buffer_pool_interop_helper.cpp` | ✅ | #test #interop #chain | Go oracle 调用的 C++ 双向 chain helper |
 | `tests/data/golden/control_headers.txt` | ✅ | #protocol #golden | 事件 0..9 的 8 字节控制头基线 |
 | `tests/data/golden/shm_metadata.txt` | ✅ | #protocol #golden | v2 文件路径与 v3 memfd metadata 基线 |
 | `tests/data/golden/fallback_data.txt` | ✅ | #protocol #golden | fallback stream/status/payload 基线 |
@@ -99,6 +102,7 @@
 | C++ buffer layout 与损坏链验证 | `src/shm/buffer_layout.*`, `tests/data/golden/buffer_layout.txt`, `tests/data/corpus/layout_corruption.txt` | `SHM-001`, `SHM-004` |
 | C++ file/memfd mapping | `src/shm/shared_memory_region.*`, `tests/shared_memory_region_test.cpp` | `SHM-001`, `PLAT-002` |
 | C++ 分级 buffer 分配回收 | `src/shm/buffer_pool.*`, `tests/buffer_pool_test.cpp` | `SHM-002` |
+| Go↔C++ 链式 slice 互操作 | `tests/buffer_pool_interop_helper.cpp`, `tools/go_oracle/control_header_oracle_test.gotxt` | `SHM-003` |
 | 批量 IO 队列 | `queue.go`, `session.go`, `protocol_manager.go` | `QUEUE-001..003` |
 | C++ queue layout accessors | `src/shm/queue_layout.*`, `tests/data/golden/queue_layout.txt` | `QUEUE-001..003` |
 | Stream 多路复用 | `session.go`, `stream.go` | `STREAM-001..004` |
@@ -108,9 +112,9 @@
 
 ## 分析进度
 
-- 已完成：上游架构分析、M0、M1；提交 `ed4c7a8` 的 run `32125329954` 完整通过。M2 `S-0201..0202` 已通过本机与远端 Linux Debug/Sanitizer，待批次云端证据。
+- 已完成：上游架构分析、M0、M1；M2 `S-0201..0203` 已通过本机、远端 Linux 和双向 Go oracle，待批次云端证据。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
-- 待验证：C++ 与 Go 的双向互操作、共享内存原子内存序、`bufferList.counter` 偏移差异。固定 Go 基线已在远程 Linux x86_64 主机完整通过。
+- 待验证：完整 Session 的 Go↔C++ 双向互操作，以及 queue 的未对齐 64 位原子策略。buffer pool 的原子内存序、counter 语义和链式 slice 已验证。
 
 ## 状态标记
 

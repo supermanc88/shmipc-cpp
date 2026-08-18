@@ -117,9 +117,9 @@
 - C++ 质量入口：`SHMIPC_WARNINGS_AS_ERRORS`、`SHMIPC_ENABLE_ASAN`、`SHMIPC_ENABLE_UBSAN`、`SHMIPC_ENABLE_TSAN`；ASan 与 TSan 在配置阶段互斥。
 - C++ 控制协议入口：`src/protocol/control_codec.hpp`。当前提供 header、事件 0..9、v2/v3 metadata 与 fallback 的大端编解码；以明确错误分类拒绝截断、非法字段、错误事件、尾随字节和超过默认 64 MiB 上限的帧。该接口暂为内部 API。
 - C++ queue 布局入口：`src/shm/queue_layout.hpp`。以 `memcpy` 对 mmap 字节做本机字节序访问，显式区分 amd64 与 arm64 header offsets，并在任何字段访问前校验 capacity、region size、slot 和 arm64 manager 对齐；并发原子语义留到 `S-0204`。
-- C++ buffer 布局入口：`src/shm/buffer_layout.hpp`。显式定义 8 字节 manager、36 字节 list 与 20 字节 slice header；creator 与 mapper 的 outstanding counters 分别位于 `+20/+24`，普通访问使用 `memcpy` 并校验字段和 region size。
+- C++ buffer 布局入口：`src/shm/buffer_layout.hpp`。显式定义 8 字节 manager、36 字节 list 与 20 字节 slice header；creator 与 mapper 的本地净 pop/push counters 分别位于 `+20/+24`，普通布局访问使用 `memcpy`。
 - C++ mapping 入口：`src/shm/shared_memory_region.hpp`。move-only owner 统一管理 `munmap`、memfd descriptor 与创建端路径清理；文件 mapper 不 unlink，memfd API 显式区分 borrowed/transferred descriptor。
-- C++ buffer pool 入口：`src/shm/buffer_pool.hpp`。按 capacity 升序管理分级 free lists，保留一个 sentinel，最小合适档位耗尽后向更大档位回退；move-only token 和角色 counter 防止错误回收。当前为单进程非并发实现。
+- C++ buffer pool 入口：`src/shm/buffer_pool.hpp`。单 slice 从最小合适档位开始，chain 从最大档位向下分配；size/head/tail/counters 使用 lock-free seq_cst 原子，publish/adopt 以绝对 offset 在进程间转移链式 slice 所有权。
 - Go oracle 入口：`go run tools/go_oracle/run_control_header_oracle.go`；严格校验 submodule commit 后，以 overlay 调用上游 header、metadata 与 fallback 编码器核对三份 golden。CMake 可通过 `SHMIPC_ENABLE_GO_ORACLE_TESTS=ON` 将其加入 CTest。
 - C++ CI 入口：`.github/workflows/ci.yml`。Ubuntu 24.04 上运行 GCC/Clang × Debug/Release 四项构建、CTest 和安装；另以 GCC 分别运行 ASan+UBSan 与 TSan，并以 Go 1.25.10 运行 control-protocol oracle。
 - 本地测试：`go test ./...`；上游测试实际依赖 Linux，macOS 不构成有效通过环境。
@@ -135,6 +135,7 @@
 - `S-0104` 验证：buffer free-list validator 以 capacity 限制遍历次数，并通过固定 corpus 分类截断、溢出、非法 offset、cycle、tail/capacity/data-range 损坏；本机、远端及 run `32125329954` 已通过，M1 完成。
 - `S-0201` 验证：file/memfd RAII mapping 已通过本机 AppleClang Debug/ASan+UBSan，以及远端 Linux GCC 8.5 Debug/ASan；Linux 测试实际执行 memfd 创建与 FD 借用/转移路径，待批次云端证据。
 - `S-0202` 验证：单进程分级 pool 已覆盖乱序配置排序、最小档位选择、耗尽后大档位回退、全部回收、creator/mapper counter、角色错配 token 和损坏 head/tail/size/used-length；本机与远端 Debug/Sanitizer 7/7 通过，待批次云端证据。
+- `S-0203` 验证：本机 20 轮、远端 10 轮双进程并发分配回收通过；AppleClang ASan+UBSan/TSan 与远端 GCC 8.5 ASan 通过。双向 oracle 完成 C++→Go→C++ 两条 20,000 字节链并恢复 free-list/counters，待批次云端证据。
 - 时钟注意：本机当前比远端快约 2 分 20 秒；同步时不得保留本机文件时间戳，否则 Ninja 会反复重新生成。标准命令见 `PROJECT_WORKFLOW.md`。
 - Linux 运行基线：本机用 Go 1.25.10 交叉编译固定提交的 amd64 测试二进制，rsync 至远端后完整测试 `PASS`、退出码 0；覆盖 v2、v3/memfd、队列、Stream/Session 和热重启路径。
 - CI：`.github/workflows/tests.yaml` 在 Ubuntu 运行单测/benchmark，并在自托管 Linux 上覆盖 Go 1.21–1.25；`.github/workflows/pre_check.yaml` 运行许可证、拼写和 golangci-lint。

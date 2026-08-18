@@ -20,6 +20,7 @@ enum class BufferPoolError {
     size_overflow,
     truncated_region,
     invalid_layout,
+    misaligned_atomic,
     no_buffer,
     invalid_allocation,
     allocation_not_in_use,
@@ -66,6 +67,24 @@ private:
     BufferListRole role_{BufferListRole::creator};
 };
 
+struct BufferChain {
+    std::vector<BufferAllocation> allocations{};
+    std::uint64_t data_size{0};
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return !allocations.empty();
+    }
+    [[nodiscard]] std::uint32_t root_offset() const noexcept {
+        return allocations.empty() ? 0U : allocations.front().offset();
+    }
+};
+
+struct PublishedBufferChain {
+    std::uint32_t root_offset{0};
+    std::size_t slice_count{0};
+    std::uint64_t data_size{0};
+};
+
 class BufferPool final {
 public:
     BufferPool() noexcept = default;
@@ -85,13 +104,21 @@ public:
 
     [[nodiscard]] BufferPoolResult<BufferAllocation> allocate(
         std::uint32_t size) noexcept;
+    [[nodiscard]] BufferPoolResult<BufferChain> allocate_chain(
+        std::uint64_t size);
+    [[nodiscard]] BufferPoolResult<PublishedBufferChain> publish_chain(
+        BufferChain&& chain, const std::vector<std::uint32_t>& slice_sizes) noexcept;
+    [[nodiscard]] BufferPoolResult<BufferChain> adopt_chain(
+        std::uint32_t root_offset) const;
     [[nodiscard]] BufferPoolError recycle(
         BufferAllocation&& allocation) noexcept;
+    [[nodiscard]] BufferPoolError recycle_chain(BufferChain&& chain) noexcept;
 
 private:
     struct ListView {
         std::size_t offset;
         std::size_t region_size;
+        std::uint32_t capacity;
         std::uint32_t capacity_per_buffer;
     };
 
@@ -114,6 +141,8 @@ private:
 
 using BufferPoolCreateResult = BufferPoolResult<BufferPool>;
 using BufferAllocationResult = BufferPoolResult<BufferAllocation>;
+using BufferChainResult = BufferPoolResult<BufferChain>;
+using PublishedBufferChainResult = BufferPoolResult<PublishedBufferChain>;
 
 [[nodiscard]] const char* to_string(BufferPoolError error) noexcept;
 

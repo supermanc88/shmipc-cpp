@@ -59,7 +59,7 @@ func main() {
 		fail(err)
 	}
 
-	command := exec.Command("go", "test", "-overlay", overlayPath, "-run", "^Test(ControlHeader|SharedMemoryMetadata|FallbackData|QueueLayout|BufferLayout)Golden$", "-count=1", ".")
+	command := exec.Command("go", "test", "-overlay", overlayPath, "-run", "^Test((ControlHeader|SharedMemoryMetadata|FallbackData|QueueLayout|BufferLayout)Golden|BufferPoolInterop)$", "-count=1", ".")
 	command.Dir = goReference
 	command.Env = append(os.Environ(), "SHMIPC_CONTROL_HEADER_GOLDEN="+filepath.Join(root, "tests", "data", "golden", "control_headers.txt"))
 	command.Env = append(command.Env, "SHMIPC_SHM_METADATA_GOLDEN="+filepath.Join(root, "tests", "data", "golden", "shm_metadata.txt"))

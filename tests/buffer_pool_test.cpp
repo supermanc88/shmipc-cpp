@@ -1,9 +1,15 @@
 #include "shm/buffer_pool.hpp"
+#include "shm/shared_memory_region.hpp"
 
 #include <cstdint>
 #include <iostream>
+#include <string>
 #include <utility>
 #include <vector>
+
+#include <sched.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 namespace {
 
@@ -25,12 +31,15 @@ bool test_invalid_config() {
         memory.data(), memory.size(), {{4096U, 60U}, {8192U, 30U}});
     const auto duplicate = shmipc::shm::initialize_buffer_pool(
         memory.data(), memory.size(), {{4096U, 50U}, {4096U, 50U}});
+    const auto misaligned_capacity = shmipc::shm::initialize_buffer_pool(
+        memory.data(), memory.size(), {{4095U, 100U}});
     const auto too_small = shmipc::shm::initialize_buffer_pool(
         memory.data(), 64U, {{4096U, 50U}, {8192U, 50U}});
     return null_memory.error == BufferPoolError::null_memory &&
            no_tiers.error == BufferPoolError::invalid_config &&
            bad_percent.error == BufferPoolError::invalid_config &&
            duplicate.error == BufferPoolError::invalid_config &&
+           misaligned_capacity.error == BufferPoolError::invalid_config &&
            too_small.error == BufferPoolError::truncated_region;
 }
 
@@ -216,6 +225,193 @@ bool test_wrong_pool_and_corrupt_manager() {
                .error == BufferPoolError::invalid_layout;
 }
 
+bool run_stress_worker(shmipc::shm::BufferPool& pool, std::uint8_t marker) {
+    constexpr int iterations = 20000;
+    for (int iteration = 0; iteration < iterations; ++iteration) {
+        for (;;) {
+            auto allocation =
+                pool.allocate(iteration % 3 == 0 ? 8192U : 4096U);
+            if (!allocation) {
+                if (allocation.error != BufferPoolError::no_buffer) {
+                    std::cerr << "stress allocate failed marker="
+                              << static_cast<int>(marker)
+                              << " iteration=" << iteration << " error="
+                              << shmipc::shm::to_string(allocation.error) << '\n';
+                    return false;
+                }
+                static_cast<void>(::sched_yield());
+                continue;
+            }
+            allocation.value.data()[0] = marker;
+            allocation.value.data()[allocation.value.capacity() - 1U] = marker;
+            const auto recycle_error = pool.recycle(std::move(allocation.value));
+            if (recycle_error != BufferPoolError::none) {
+                std::cerr << "stress recycle failed marker="
+                          << static_cast<int>(marker)
+                          << " iteration=" << iteration << " error="
+                          << shmipc::shm::to_string(recycle_error) << '\n';
+                return false;
+            }
+            break;
+        }
+    }
+    return true;
+}
+
+bool test_cross_process_stress() {
+    std::vector<char> path_template{
+        '/', 't', 'm', 'p', '/', 's', 'h', 'm', 'i', 'p', 'c', '-', 'p', 'o',
+        'o', 'l', '-', 's', 't', 'r', 'e', 's', 's', '.', 'X', 'X', 'X', 'X',
+        'X', 'X', '\0'};
+    const auto temporary_fd = ::mkstemp(path_template.data());
+    if (temporary_fd < 0) {
+        return false;
+    }
+    static_cast<void>(::close(temporary_fd));
+    static_cast<void>(::unlink(path_template.data()));
+    const std::string path(path_template.data());
+    auto region = shmipc::shm::create_file_region(
+        path, region_size, shmipc::shm::FileCleanup::unlink_on_destroy);
+    if (!region) {
+        return false;
+    }
+    auto creator = shmipc::shm::initialize_buffer_pool(
+        region.value.data(), region.value.size(),
+        {{4096U, 60U}, {8192U, 40U}}, BufferListRole::creator);
+    if (!creator) {
+        return false;
+    }
+
+    int ready_pipe[2]{};
+    int start_pipe[2]{};
+    if (::pipe(ready_pipe) != 0 || ::pipe(start_pipe) != 0) {
+        return false;
+    }
+    const auto child = ::fork();
+    if (child < 0) {
+        return false;
+    }
+    if (child == 0) {
+        static_cast<void>(::close(ready_pipe[0]));
+        static_cast<void>(::close(start_pipe[1]));
+        auto child_region = shmipc::shm::map_file_region(path);
+        auto mapper = child_region
+                          ? shmipc::shm::map_buffer_pool(
+                                child_region.value.data(), child_region.value.size(),
+                                BufferListRole::mapper)
+                          : shmipc::shm::BufferPoolCreateResult{};
+        const char ready = mapper ? 'R' : 'E';
+        const auto ready_written = ::write(ready_pipe[1], &ready, 1U);
+        char start = 0;
+        const auto start_read = ::read(start_pipe[0], &start, 1U);
+        const auto success = ready_written == 1 && start_read == 1 && start == 'S' &&
+                             mapper && run_stress_worker(mapper.value, 0x5aU);
+        ::_exit(success ? 0 : 1);
+    }
+
+    static_cast<void>(::close(ready_pipe[1]));
+    static_cast<void>(::close(start_pipe[0]));
+    char ready = 0;
+    const auto ready_read = ::read(ready_pipe[0], &ready, 1U);
+    const char start = 'S';
+    const auto start_written = ::write(start_pipe[1], &start, 1U);
+    const auto parent_success = ready_read == 1 && ready == 'R' &&
+                                start_written == 1 &&
+                                run_stress_worker(creator.value, 0xa5U);
+    int child_status = 0;
+    const auto waited = ::waitpid(child, &child_status, 0);
+    static_cast<void>(::close(ready_pipe[0]));
+    static_cast<void>(::close(start_pipe[1]));
+    const auto mapped = shmipc::shm::map_buffer_pool(
+        region.value.data(), region.value.size(), BufferListRole::mapper);
+    const auto success = parent_success && waited == child &&
+                         WIFEXITED(child_status) && WEXITSTATUS(child_status) == 0 &&
+                         creator.value.all_returned() && mapped;
+    if (!success) {
+        std::cerr << "stress summary parent=" << parent_success
+                  << " waited=" << (waited == child)
+                  << " exited=" << WIFEXITED(child_status)
+                  << " status=" << WEXITSTATUS(child_status)
+                  << " returned=" << creator.value.all_returned()
+                  << " map_error=" << shmipc::shm::to_string(mapped.error) << '\n';
+    }
+    return success;
+}
+
+bool transfer_chain(shmipc::shm::BufferPool& sender,
+                    shmipc::shm::BufferPool& receiver,
+                    std::uint8_t marker) {
+    constexpr std::uint64_t payload_size = 20000U;
+    auto chain = sender.allocate_chain(payload_size);
+    if (!chain || chain.value.allocations.size() < 2U) {
+        std::cerr << "chain allocate failed error="
+                  << shmipc::shm::to_string(chain.error) << '\n';
+        return false;
+    }
+    std::vector<std::uint32_t> sizes;
+    sizes.reserve(chain.value.allocations.size());
+    auto remaining = payload_size;
+    for (auto& allocation : chain.value.allocations) {
+        const auto size = static_cast<std::uint32_t>(
+            std::min<std::uint64_t>(remaining, allocation.capacity()));
+        sizes.push_back(size);
+        for (std::uint32_t index = 0; index < size; ++index) {
+            allocation.data()[index] = marker;
+        }
+        remaining -= size;
+    }
+    auto published = sender.publish_chain(std::move(chain.value), sizes);
+    if (!published || published.value.data_size != payload_size || chain.value) {
+        std::cerr << "chain publish failed error="
+                  << shmipc::shm::to_string(published.error) << '\n';
+        return false;
+    }
+    auto adopted = receiver.adopt_chain(published.value.root_offset);
+    if (!adopted || adopted.value.data_size != payload_size ||
+        adopted.value.allocations.size() != published.value.slice_count) {
+        std::cerr << "chain adopt failed error="
+                  << shmipc::shm::to_string(adopted.error)
+                  << " size=" << adopted.value.data_size << '\n';
+        return false;
+    }
+    for (std::size_t index = 0; index < adopted.value.allocations.size(); ++index) {
+        const auto& allocation = adopted.value.allocations[index];
+        if (allocation.data()[0] != marker ||
+            allocation.data()[sizes[index] - 1U] != marker) {
+            std::cerr << "chain data mismatch\n";
+            return false;
+        }
+    }
+    const auto recycle_error = receiver.recycle_chain(std::move(adopted.value));
+    if (recycle_error != BufferPoolError::none) {
+        std::cerr << "chain recycle failed error="
+                  << shmipc::shm::to_string(recycle_error) << '\n';
+    }
+    return recycle_error == BufferPoolError::none;
+}
+
+bool test_bidirectional_chains() {
+    std::vector<std::uint8_t> memory(region_size, 0);
+    auto creator = shmipc::shm::initialize_buffer_pool(
+        memory.data(), memory.size(), {{4096U, 60U}, {8192U, 40U}},
+        BufferListRole::creator);
+    auto mapper = creator ? shmipc::shm::map_buffer_pool(
+                                memory.data(), memory.size(),
+                                BufferListRole::mapper)
+                          : shmipc::shm::BufferPoolCreateResult{};
+    if (!creator || !mapper ||
+        !transfer_chain(creator.value, mapper.value, 0x3cU)) {
+        return false;
+    }
+    if (creator.value.all_returned() || mapper.value.all_returned()) {
+        return false;
+    }
+    return transfer_chain(mapper.value, creator.value, 0xc3U) &&
+           creator.value.all_returned() && mapper.value.all_returned() &&
+           shmipc::shm::map_buffer_pool(memory.data(), memory.size(),
+                                        BufferListRole::mapper);
+}
+
 }  // namespace
 
 int main() {
@@ -233,6 +429,14 @@ int main() {
     }
     if (!test_wrong_pool_and_corrupt_manager()) {
         std::cerr << "buffer pool invalid ownership/layout test failed\n";
+        return 1;
+    }
+    if (!test_cross_process_stress()) {
+        std::cerr << "buffer pool cross-process stress test failed\n";
+        return 1;
+    }
+    if (!test_bidirectional_chains()) {
+        std::cerr << "buffer pool bidirectional chain test failed\n";
         return 1;
     }
     return 0;
