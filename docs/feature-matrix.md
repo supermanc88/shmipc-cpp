@@ -27,7 +27,7 @@
 | Unix/TCP control socket 与 exact IO | 已验证 | partial/EOF/would-block、真实 TCP/Unix、三套本机配置、远端 GCC/ASan | 持续回归 |
 | Linux epoll control dispatcher | 已验证 | ET 可消费读缓冲、写背压/串行、关闭语义；远端 GCC Debug/Release/ASan、专项 100 次、run `32148166394` | 持续回归 |
 | v2 `/dev/shm` 握手 | 已验证 | 双向真实 Go Session、错误/清理路径、远端 50/50、run `32151993614` 七项门禁 | 持续回归 |
-| v2 client 单 Session/Stream | 本机/远端已验证，待云端 | C++/Go 20,000→17,000 字节、Polling、timeout、close、远端 ASan/50 轮 | push 后检查七项 CI |
+| v2 client 单 Session/Stream | 已验证 | C++/Go 20,000→17,000 字节、Polling、timeout、close、远端 ASan/50 轮、run `32154121843` | 持续回归 |
 
 ## 产品需求
 

@@ -147,9 +147,9 @@
 
 ## 分析进度
 
-- 已完成：上游架构分析、M0、M1、M2，以及 M3 `S-0301..0302`；提交 `3f2db07` 的 run `32151993614` 七项门禁全部成功。
+- 已完成：上游架构分析、M0、M1、M2，以及 M3 `S-0301..0303`；提交 `050d7da` 的 run `32154121843` 七项门禁全部成功，Go protocol oracle 为 14/14。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
-- 待验证：Go client→C++ server、多 Stream、fallback 与完整关闭矩阵。C++ client→Go server 单 Stream 已完成远端双向数据和关闭验证。
+- 待验证：Go client→C++ server、多 Stream、fallback 与完整关闭矩阵。C++ client→Go server 单 Stream 已完成本机、远端和云端验证。
 
 ## 状态标记
 
