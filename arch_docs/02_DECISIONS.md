@@ -41,11 +41,11 @@
 
 ### D-007：Linux CI 采用编译器/构建类型与 Sanitizer 分层矩阵
 
-- 状态：已实现，待首轮云端运行验证
+- 状态：已验证
 - 常规矩阵：Ubuntu 24.04 上覆盖 GCC/Clang × Debug/Release，全部启用 warnings-as-errors，并执行 build、CTest 和 install。
 - Sanitizer 矩阵：GCC Debug 分别执行 ASan+UBSan 与 TSan，避免互斥运行库组合并让失败归因清晰。
 - 供应链约束：checkout 使用只读权限、`persist-credentials: false` 和递归 submodule；版本采用 2026-08-18 官方仓库当前示例的 `actions/checkout@v7`。
-- 证据：`.github/workflows/ci.yml:1-89`；本机 workflow YAML 解析、Release build/test/install 通过，远端 GCC 8.5 Release 与独立 ASan 通过。云端状态需在 push 后补证。
+- 证据：`.github/workflows/ci.yml:1-89`；提交 `eeae84e` 的 GitHub Actions run [`32116398237`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32116398237) 总结论为 success，六个矩阵作业及其 Configure/Build/Test 步骤全部成功，常规四项 Verify installation 成功。
 
 ### D-004：v2 和 v3 是两个必须分别验收的握手路径
 
@@ -102,3 +102,4 @@
 - 2026-08-18：接受 C++17，建立 CMake/library/test/install 骨架；AppleClang 与远端 GCC 8.5 常规门禁通过，并记录远端时钟漂移与 sanitizer 运行库缺失。影响代码：`CMakeLists.txt`、`cmake/`、`include/`、`src/`、`tests/`；影响文档：本文件、`00_INDEX.md`、`01_OVERVIEW.md`、`dirs/root.md`、`graphs/relations.md` 及项目计划/工作流。
 - 2026-08-18：用户安装远端 `libasan` 后，GCC 8.5 独立 ASan 构建与 `shmipc.version` 测试通过；修正原“远端 sanitizer 全部缺失”为“ASan 可用，UBSan/TSan 仍缺运行库”。证据：`CMakeLists.txt:16-18` 定义三个独立选项，`cmake/ShmipcProjectOptions.cmake:28-50` 组装 sanitizer flags；影响文档：本文件、`01_OVERVIEW.md`、`dirs/root.md`、`docs/PROJECT_WORKFLOW.md`、`docs/SHMIPC_CPP_PORTING_PLAN.md`。
 - 2026-08-18：新增 Linux CI 分层矩阵；常规作业覆盖 GCC/Clang × Debug/Release，Sanitizer 作业覆盖 ASan+UBSan 与 TSan。证据：`.github/workflows/ci.yml:1-89`；影响文档：`00_INDEX.md`、`01_OVERVIEW.md`、`dirs/root.md`、`graphs/relations.md`、项目工作流与移植计划。
+- 2026-08-18：提交 `eeae84e` 的首轮 GitHub Actions run `32116398237` 完整成功，验证六项 CI 矩阵均非跳过且步骤级通过；`S-0002` 从“待云端验证”转为“已验证”。影响文档：本文件、`01_OVERVIEW.md`、`dirs/root.md`、项目工作流与移植计划。

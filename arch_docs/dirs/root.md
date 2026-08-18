@@ -27,6 +27,7 @@
 - `tests/version_test.cpp` 通过公开头调用 library 实现，构成首个端到端链接测试。
 - `.github/workflows/ci.yml:18-89` 定义 GCC/Clang Debug/Release 常规矩阵及 ASan+UBSan/TSan 独立矩阵。
 - 2026-08-18：本机 Debug/test/install 与 ASan+UBSan 通过；远端 Linux GCC 8.5 Debug/test/install 及独立 ASan 通过，UBSan/TSan 仍缺远端运行库。
+- 2026-08-18：提交 `eeae84e` 的 GitHub Actions run `32116398237` 中，GCC/Clang Debug/Release、ASan+UBSan 和 TSan 六项全部通过。
 
 ## Guesses & Uncertainties
 

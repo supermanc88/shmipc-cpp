@@ -100,7 +100,7 @@ Sanitizer 使用独立构建目录，不能混用编译产物：`build/asan`、`
 - Sanitizer 矩阵：GCC Debug，分别执行 ASan+UBSan 和 TSan。
 - checkout 使用只读仓库权限、禁用凭据持久化，并递归拉取固定 Go submodule。
 
-远程主机用于开发中快速复核，GitHub Actions 用于独立环境门禁；两者结果分别记录，不相互冒充。workflow 首次 push 并运行成功前，`S-0002` 只能标记为“已配置、待云端验证”。
+远程主机用于开发中快速复核，GitHub Actions 用于独立环境门禁；两者结果分别记录，不相互冒充。2026-08-18 首轮 GitHub Actions run `32116398237` 的六个矩阵作业全部通过，建立了 `S-0002` 云端基线。
 
 ## 5. Go 基线与互操作
 
