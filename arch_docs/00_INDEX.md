@@ -126,7 +126,7 @@
 | 批量 IO 队列 | `queue.go`, `session.go`, `protocol_manager.go` | `QUEUE-001..003` |
 | C++ queue layout accessors | `src/shm/queue_layout.*`, `tests/data/golden/queue_layout.txt` | `QUEUE-001..003` |
 | C++ MPSC queue 与 Go 互操作 | `src/shm/shared_queue.*`, `tests/shared_queue*_helper.cpp`, `tools/go_oracle/` | `QUEUE-001..003` |
-| Unix/TCP 控制连接基础层 | `src/transport/control_socket.*`, `tests/control_socket_test.cpp` | `COMP-001`, `S-0301` |
+| Unix/TCP 控制连接与 Linux 事件层 | `src/transport/control_socket.*`, `src/transport/epoll_dispatcher.*`, `tests/*transport*`, `tests/epoll_dispatcher_test.cpp` | `COMP-001`, `S-0301` |
 | Stream 多路复用 | `session.go`, `stream.go` | `STREAM-001..004` |
 | 控制通道 fallback | `stream.go`, `protocol_manager.go` | `STREAM-003` |
 | 服务监听和热重启 | `listener.go`, `session_manager.go` | `API-002`, `OPS-001` |
@@ -134,7 +134,7 @@
 
 ## 分析进度
 
-- 已完成：上游架构分析、M0、M1、M2；M3 `S-0301` 实现已通过本机及远端 Linux Debug/ASan，等待云端 Linux TSan 后关闭。
+- 已完成：上游架构分析、M0、M1、M2，以及 M3 `S-0301`；提交 `17a668e` 的 run `32148166394` 七项门禁全部成功。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
 - 待验证：完整 Session 的 Go↔C++ 双向互操作。BufferReader/Writer、pool/queue 原子语义和双向数据平面均已云端验证。
 

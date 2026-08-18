@@ -48,7 +48,7 @@
 - eventfd helper：`src/transport/epoll_dispatcher.cpp:59-82`。
 - 读写、回调与关闭：`src/transport/epoll_dispatcher.cpp:87-361`。
 - 注册、事件循环和停止：`src/transport/epoll_dispatcher.cpp:363-595`。
-- 自动测试：`tests/epoll_dispatcher_test.cpp:1-351`；远端 Linux GCC 8.5 Debug/ASan 11/11，专项连续 100 次通过。
+- 自动测试：`tests/epoll_dispatcher_test.cpp:1-351`；远端 Linux GCC 8.5 Debug/Release/ASan 11/11，专项连续 100 次通过；提交 `17a668e` 的 run `32148166394` 七项门禁全部成功。
 
 ## Links
 

@@ -33,11 +33,10 @@
 - C++ ownership/exact IO 与建连：`src/transport/control_socket.cpp:18-405`。
 - C++ event connection、epoll loop 与启动/停止：`src/transport/epoll_dispatcher.cpp:68-595`。
 - `tests/control_socket_test.cpp:18-173` 覆盖 partial read、EOF、would-block、TCP、Unix、重复 bind、路径清理和错误；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 10/10 通过。
-- `tests/epoll_dispatcher_test.cpp:1-351` 覆盖 partial frame、writev、EAGAIN 背压、并发写无交错、remote/local/shutdown close、缓冲上限、callback 错误/重入 close 和非法配置；远端 GCC 8.5 Debug/ASan 各 11/11，专项连续 100 次通过。
+- `tests/epoll_dispatcher_test.cpp:1-351` 覆盖 partial frame、writev、EAGAIN 背压、并发写无交错、remote/local/shutdown close、缓冲上限、callback 错误/重入 close 和非法配置；远端 GCC 8.5 Debug/Release/ASan 各 11/11，专项连续 100 次通过；提交 `17a668e` 的 run `32148166394` 七项门禁全部成功。
 
 ## Guesses & Uncertainties
 
-- Linux TSan 需等待本次提交推送后的 GitHub Actions；远端仅安装 ASan runtime。
 - 本层不提供握手或事件写 deadline；上层 Session/Stream 需统一定义超时和取消策略后再扩展，避免在 blocking helper 与 dispatcher 内形成两套等待模型。
 
 ## Links
