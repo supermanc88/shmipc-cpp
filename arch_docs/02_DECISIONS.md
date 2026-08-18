@@ -177,6 +177,16 @@
 - transport：握手函数借用 blocking `ControlSocket`，不接管或切换 nonblocking；成功后 Session 才能将 socket 移入 dispatcher。deadline 留给 Session 统一取消。
 - 证据：`src/core/v2_handshake.cpp`、`tests/v2_handshake_test.cpp`、`tests/v2_handshake_interop_helper.cpp` 与固定 Go overlay；远端双向互通 50/50，GCC 8.5 ASan 12/12。
 
+### D-022：首个 Session 切片固定 Stream ID 1 和消息级接收
+
+- 状态：本机/远端已验证，等待云端门禁
+- 范围：C++ v2 client 只创建 Go client 首次 `OpenStream` 对应的 ID 1；每个 queue element 对应一条完整 buffer chain 和一条接收消息。
+- 唤醒：producer 只在 working `0→1` 时发 Polling；consumer drain 到 empty 后清零并复查，继承 `SharedQueue::mark_not_working` 的无丢唤醒不变量。
+- close：正常 close 优先发送无 buffer 的 closed queue element，同时接受控制通道 StreamClose，以兼容 Go 在 queue full 时的关闭 fallback。
+- 生命周期：Session 拥有 event connection 和 callback state；callback state 不反向强持有 connection，close 不形成环。receive timeout 只结束本次等待，不关闭 Session。
+- 暂缓：fallback payload、queue-full retry、多 Stream、C++ server 和公共 API 放在 `S-0304..0305`/M4。
+- 证据：`src/core/v2_client_session.cpp`、`tests/v2_client_session_test.cpp`、`TestV2ClientSessionInterop`；远端 Debug/ASan、ASan Go 互操作及 50/50 重复通过。
+
 ## 设计风险与待验证事实
 
 ### R-001：共享内存使用本机字节序和手工 offset
@@ -251,3 +261,4 @@
 - 2026-08-18：提交 `17a668e` 的 GitHub Actions run `32148166394` 七项作业及关键步骤全部成功，包含 GCC 13 Release、Linux ASan+UBSan、TSan 与 Go oracle；`S-0301` 正式关闭，M3 转入 `S-0302` v2 `/dev/shm` 握手。影响文档：索引、概要、本文件、root/transport 目录、epoll 文件、移植计划和功能矩阵。
 - 2026-08-18：`S-0302` 新增 v2 文件路径握手、move-only 共享资源聚合及细分错误模型；固定 Go overlay 在远端 Linux 完成两个方向真实 Session 初始化并连续 50/50，GCC 8.5 Debug/ASan 通过，等待 GitHub Actions 门禁。影响文档：索引、概要、本文件、core/oracle 目录、关系图、移植计划、工作流、回归指南和功能矩阵。
 - 2026-08-18：提交 `3f2db07` 的 GitHub Actions run `32151993614` 七项作业及关键步骤全部成功，包含 GCC/Clang Debug/Release、ASan+UBSan、TSan 与 Linux Go↔C++ v2 handshake oracle；`S-0302` 正式关闭。影响文档：索引、概要、本文件、root/core 目录、项目工作流、移植计划和功能矩阵。
+- 2026-08-18：`S-0303` 新增 v2 client 单 Session/Stream，将握手资源接入 epoll，以 buffer chain、queue 和 Polling 完成消息收发及关闭；真实 Go server 互操作和远端 Debug/ASan/50 轮压力通过，等待云端门禁。影响文档：索引、概要、本文件、core/oracle 目录、关系图、移植计划、回归指南和功能矩阵。

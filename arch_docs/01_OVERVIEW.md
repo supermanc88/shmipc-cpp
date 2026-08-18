@@ -117,6 +117,7 @@
 - C++ 质量入口：`SHMIPC_WARNINGS_AS_ERRORS`、`SHMIPC_ENABLE_ASAN`、`SHMIPC_ENABLE_UBSAN`、`SHMIPC_ENABLE_TSAN`；ASan 与 TSan 在配置阶段互斥。
 - C++ 控制协议入口：`src/protocol/control_codec.hpp`。当前提供 header、事件 0..9、v2/v3 metadata 与 fallback 的大端编解码；以明确错误分类拒绝截断、非法字段、错误事件、尾随字节和超过默认 64 MiB 上限的帧。该接口暂为内部 API。
 - C++ v2 握手入口：`src/core/v2_handshake.hpp`。client 创建 buffer/双 queue 并发送路径 metadata，server 反向映射 queue 视图；成功后 socket 保留给后续 Session/epoll，失败时 creator 文件由 RAII 清理。
+- C++ v2 单 Stream 入口：`src/core/v2_client_session.hpp`。当前 client 固定首个 Stream ID 1，以 buffer chain + queue element 传递完整消息，以 Polling 唤醒对端并支持 queue/control close；fallback、多 Stream 与 server 端尚未纳入。
 - C++ queue 布局入口：`src/shm/queue_layout.hpp`。以 `memcpy` 对 mmap 字节做本机字节序访问，显式区分 amd64 与 arm64 header offsets。运行期入口 `src/shm/shared_queue.hpp` 只接受本机布局，以本地 mutex 串行化 producers、seq_cst 共享原子发布/消费 element，并实现 batch 与 working flag 状态机。
 - C++ buffer 布局入口：`src/shm/buffer_layout.hpp`。显式定义 8 字节 manager、36 字节 list 与 20 字节 slice header；creator 与 mapper 的本地净 pop/push counters 分别位于 `+20/+24`，普通布局访问使用 `memcpy`。
 - C++ mapping 入口：`src/shm/shared_memory_region.hpp`。move-only owner 统一管理 `munmap`、memfd descriptor 与创建端路径清理；文件 mapper 不 unlink，memfd API 显式区分 borrowed/transferred descriptor。
@@ -142,6 +143,7 @@
 - `S-0204` 验证：4 producer/单 consumer 并发 20,000 elements、父子进程 20,000 次环绕、1,000 轮 working 竞争和双向 Go↔C++ 各 1,000 elements 通过；提交 `4a0ef5c` 的 run `32131088262` 七项作业全部成功。
 - `S-0205` 验证：reserve/write/publish、单 slice 零拷贝、跨 slice owned copy、peek、byte/string/discard、pin/release 与析构回收已通过本机 Go oracle 10/10、ASan+UBSan 9/9、TSan 9/9，以及远端 GCC 8.5 Debug/ASan 9/9；提交 `c1c23f9` 的 run `32134325132` 七项作业全部成功，M2 完成。
 - `S-0302` 验证：C++ 单元测试覆盖 v2 成功、queue 方向、buffer 角色、错误/截断 header、缺失路径、已有文件与失败回滚；远端 Linux Go↔C++ 两方向真实 `newSession` 初始化连续 50/50，GCC 8.5 Debug/ASan 全量 CTest 通过；提交 `3f2db07` 的 run `32151993614` 七项门禁全部成功。
+- `S-0303` 验证：C++ client 与 C++ test peer、真实 Go server 均完成 20,000 字节请求和 17,000 字节响应，覆盖跨 slice adopt/recycle、Polling、receive timeout 与双向 close；远端 GCC 8.5 Debug/ASan 及 Go 互操作 50/50 通过，等待云端门禁。
 - `S-0301` 验证：socket 基础层覆盖 partial/EOF/would-block、TCP/Unix 和路径所有权；Linux epoll 层覆盖 partial frame 保留、writev、EAGAIN 背压、并发写无交错、关闭原因/唯一通知、callback 契约和缓冲上限。远端 GCC 8.5 Debug/Release/ASan 11/11、专项连续 100 次通过；提交 `17a668e` 的 run `32148166394` 七项门禁全部成功，切片关闭。
 - 时钟注意：本机当前比远端快约 2 分 20 秒；同步时不得保留本机文件时间戳，否则 Ninja 会反复重新生成。标准命令见 `PROJECT_WORKFLOW.md`。
 - Linux 运行基线：本机用 Go 1.25.10 交叉编译固定提交的 amd64 测试二进制，rsync 至远端后完整测试 `PASS`、退出码 0；覆盖 v2、v3/memfd、队列、Stream/Session 和热重启路径。

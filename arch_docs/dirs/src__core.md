@@ -2,7 +2,7 @@
 
 ## Summary
 
-组合 protocol、transport 与 shm 子系统形成可执行的会话初始化步骤。当前实现 v2 文件路径握手；Session/Stream、v3 协商与 memfd 传递仍由后续切片补充。
+组合 protocol、transport 与 shm 子系统形成可执行的会话初始化和最小数据路径。当前实现 v2 文件路径握手及 client 单 Session/单 Stream；多 Stream、C++ server、v3 与 fallback 仍由后续切片补充。
 
 ## Directory Contents
 
@@ -10,6 +10,8 @@
 |---|---|---|---|
 | `v2_handshake.hpp` | 内部头文件 | ✅ | v2 配置、结果、细分错误与共享资源 ownership |
 | `v2_handshake.cpp` | C++ 实现 | ✅ | client 创建并发送 metadata；server 接收并映射资源 |
+| `v2_client_session.hpp` | 内部头文件 | ✅ | 单 client Session/Stream API、状态与错误模型 |
+| `v2_client_session.cpp` | C++ 实现 | ✅ | epoll callback、queue/buffer 数据面、Polling 与关闭 |
 
 ## Invariants
 
@@ -19,6 +21,7 @@
 - 握手复用 blocking `ControlSocket::read_full/write_full`；成功后 socket 仍由调用者拥有，便于 Session 将其移动到 epoll dispatcher。
 - 任一步骤失败时，已创建的文件和 mapping 通过 RAII 回滚；已存在的非本进程文件不会被删除。
 - 本层不实现 deadline；Session 初始化超时需要在后续集成层统一取消 socket 阻塞。
+- 当前 Session 只承诺 Stream ID 1 和共享内存消息路径；不静默执行 fallback 或多 Stream。
 
 ## Evidence
 
@@ -27,9 +30,11 @@
 - buffer 创建/映射：`third_party/shmipc-go/buffer_manager.go:182-245`、`573-602`。
 - `tests/v2_handshake_test.cpp` 覆盖成功、双向 queue、两角色 buffer、错误版本/事件、截断、缺失路径、已有文件保护及失败清理。
 - 固定 Go overlay 在远端 Linux 验证两个方向，并连续重复 50 轮；GCC 8.5 Debug/ASan 与提交 `3f2db07` 的 run `32151993614` 七项门禁通过。
+- `tests/v2_client_session_test.cpp` 与 Go oracle 验证 C++ client→Go server 的 20,000/17,000 字节双向链、Polling、timeout 和 close；远端 Debug/ASan 及 50/50 重复通过。
 
 ## Links
 
 - [v2 handshake 文件](../files/src__core__v2_handshake.hpp.md)
+- [v2 client Session 文件](../files/src__core__v2_client_session.hpp.md)
 - [架构概要](../01_OVERVIEW.md)
 - [回归测试指南](../../docs/regression-test-guide.md)

@@ -27,12 +27,13 @@
 | Unix/TCP control socket 与 exact IO | 已验证 | partial/EOF/would-block、真实 TCP/Unix、三套本机配置、远端 GCC/ASan | 持续回归 |
 | Linux epoll control dispatcher | 已验证 | ET 可消费读缓冲、写背压/串行、关闭语义；远端 GCC Debug/Release/ASan、专项 100 次、run `32148166394` | 持续回归 |
 | v2 `/dev/shm` 握手 | 已验证 | 双向真实 Go Session、错误/清理路径、远端 50/50、run `32151993614` 七项门禁 | 持续回归 |
+| v2 client 单 Session/Stream | 本机/远端已验证，待云端 | C++/Go 20,000→17,000 字节、Polling、timeout、close、远端 ASan/50 轮 | push 后检查七项 CI |
 
 ## 产品需求
 
 | Requirement IDs | 能力 | 状态 | 首个实现切片 |
 |---|---|---|---|
-| `COMP-001` | Go↔C++ v2 双向互通 | 初始化握手已双向验证；Session/Stream 数据交换待实现 | M3 |
+| `COMP-001` | Go↔C++ v2 双向互通 | 握手双向、C++ client→Go server 单 Stream 已验证；反向和多 Stream 待实现 | M3 |
 | `S-0301` | Unix/TCP control transport 与 epoll | 已验证；run `32148166394` 七项门禁成功 | M3 |
 | `COMP-002` | Go↔C++ v3 双向互通 | 基线锁定 | M4 |
 | `PROTO-001` | 控制头、事件、metadata 与 fallback 编解码 | 已验证 | `S-0101` |
@@ -44,8 +45,8 @@
 | `QUEUE-001` | MPSC queue put/pop | 已云端验证 | `S-0102`/`S-0204` |
 | `QUEUE-002` | working flag 与批量唤醒 | 已云端验证 | `S-0204` |
 | `QUEUE-003` | amd64/arm64 原子对齐 | 两套布局与两架构原子路径已云端验证 | `S-0102`/`S-0204` |
-| `STREAM-001..004` | 多路复用、读写、fallback、关闭 | 未开始 | M3/M4 |
-| `API-001` | RAII Session/Stream API | 未开始 | M3 |
+| `STREAM-001..004` | 多路复用、读写、fallback、关闭 | 单 Stream 共享内存读写/关闭已验证；多路复用与 fallback 待实现 | M3/M4 |
+| `API-001` | RAII Session/Stream API | 内部单 client Session 已验证；公共 API 待设计 | M3 |
 | `API-002..003` | Listener/SessionManager/异步 API | 未开始 | M5 |
 | `OPS-001` | 热重启 | 未开始 | M5 |
 | `OBS-001` | 指标与日志 | 未开始 | M5 |

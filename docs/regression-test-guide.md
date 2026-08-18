@@ -72,7 +72,8 @@ ssh 23.2 'cd /home/chm/shmipc-cpp && \
 - `shmipc.control_socket`：adopt/move ownership、partial exact IO、EOF/would-block、真实 loopback TCP、pathname Unix socket、重复 bind 与路径清理。
 - `shmipc.epoll_dispatcher`：Linux 上验证 ET partial frame 保留、writev、EAGAIN 背压、并发写无交错、remote/local/shutdown close、buffer/callback 错误与重入 close；非 Linux 明确验证 unsupported。
 - `shmipc.v2_handshake`：验证 client/server 成功初始化、queue 方向翻转、两角色 buffer 分配回收、错误版本/事件、截断 body、缺失路径、重复文件保护与失败清理。
-- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用真实 C++ helpers 双向传递 20,000 字节 slice chain、各 1,000 个 queue elements，并在 Linux 验证两个方向的 v2 Session 初始化。
+- `shmipc.v2_client_session`：Linux 上验证单 Stream 20,000→17,000 字节跨 slice round-trip、receive timeout、Polling 和双向 queue close；非 Linux 明确验证 epoll unsupported。
+- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用真实 C++ helpers 双向传递 slice chain/queue elements，在 Linux 验证两个方向的 v2 握手及 C++ client→真实 Go server 的单 Stream 数据与关闭。
 - 任一 commit mismatch、缺行、重复/错序事件或字节差异均为失败，不允许自动更新 golden 后绕过评审。
 
 当前 golden 的 SHA-256：

@@ -6,7 +6,7 @@
 |---|---|
 | 项目类型 | Go 到 C++ 的跨语言、跨运行时重实现 |
 | 参考实现 | `third_party/shmipc-go` commit `55c241eea321071278d1ee7f7c46292d23e50a5b` |
-| 当前阶段 | M2 与 M3 `S-0301..0302` 已完成；进入 `S-0303` 单 Session/单 Stream |
+| 当前阶段 | M2 与 M3 `S-0301..0302` 已完成；`S-0303` 本机/远端已验证，等待云端门禁 |
 | 已确认目标 | 在 Linux 上提供现代 C++ 共享内存 IPC 库，并与固定 Go 实现双向互通；Go 仅用于开发验收 |
 | 流程依据 | 用户提供的《软件项目端到端标准工作流程》 |
 | 架构依据 | [上游架构概要](../arch_docs/01_OVERVIEW.md) 与 [决策/风险](../arch_docs/02_DECISIONS.md) |
@@ -185,7 +185,7 @@ tools/
 
 - `S-0301`（已验证）：Unix/TCP exact blocking IO 与 Linux edge-triggered epoll dispatcher；提交 `17a668e` 的 run `32148166394` 七项门禁全部成功。
 - `S-0302`（已验证）：v2 `/dev/shm` 握手；双向真实 Go Session 初始化、远端 50 轮重复及 run `32151993614` 七项门禁通过。
-- `S-0303`：单 Session/单 Stream C++ client↔Go server。
+- `S-0303`（本机/远端已验证，待云端）：单 Session/单 Stream C++ client↔Go server；20,000→17,000 字节、timeout、Polling 和双向 close 通过。
 - `S-0304`：Go client↔C++ server，加入多消息和关闭。
 - `S-0305`：多 Stream 并发、deadline、半关闭与错误传播。
 
@@ -311,11 +311,12 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-M3-001`：move-only control socket/listener 覆盖 adopted FD、partial exact IO、EOF/would-block、loopback TCP、pathname Unix socket、重复 bind、路径 unlink 与错误输入；本机 AppleClang Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 10/10 通过。
 - `E-M3-002`：Linux epoll dispatcher 覆盖 partial frame 保留、writev、EAGAIN/EPOLLOUT 背压、两个并发 writer 无帧交错、remote/local/shutdown close、buffer limit、callback 错误与 `on_data` 重入 close；远端 GCC 8.5 Debug/Release/ASan 各 11/11，Debug 专项连续 100 次通过。提交 `17a668e` 的 run [`32148166394`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32148166394) 七项作业及关键步骤全部成功，`S-0301` 关闭。
 - `E-M3-003`：v2 client 创建 buffer/双 queue 并发送单帧路径 metadata，server 无 ACK 地映射反向 queue 视图；C++ 覆盖错误版本/事件、截断、缺失路径、已有文件保护和失败回滚。远端固定 Go `newSession` 两方向互通并连续 50/50，GCC 8.5 Debug/ASan 各 12/12；提交 `3f2db07` 的 run [`32151993614`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32151993614) 七项作业及关键步骤全部成功。
+- `E-M3-004`：v2 C++ client 固定 Stream ID 1，以 BufferWriter publish→queue put→Polling 发送，以 queue pop→adopt→BufferReader 接收，并支持 timeout、queue/control close。C++ peer 与真实 Go server 均完成 20,000→17,000 字节跨 slice round-trip；远端 GCC 8.5 Debug/ASan 13/13、ASan Go 互操作及重复 50/50 通过，等待云端门禁。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. 进入 `S-0303`，锁定单 Session/单 Stream 的事件序列、queue element 状态和 buffer ownership。
-2. 实现 C++ client→Go server 的最小 Stream 发送/接收与关闭路径。
-3. 保持 v2 握手 socket ownership 和 creator-only unlink 不变量，补 Session 级初始化 deadline/cancel。
+1. push `S-0303` 候选提交并检查 GitHub Actions 七项门禁。
+2. 进入 `S-0304`，实现 Go client→C++ server 及多消息/关闭路径。
+3. 在 `S-0305` 扩展多 Stream、deadline/cancel 和完整错误传播。

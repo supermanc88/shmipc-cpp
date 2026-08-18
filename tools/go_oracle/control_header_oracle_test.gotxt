@@ -2,6 +2,7 @@ package shmipc
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -123,6 +124,73 @@ func TestV2HandshakeInterop(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+func TestV2ClientSessionInterop(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("full shmipc Session initialization requires Linux")
+	}
+	helper := os.Getenv("SHMIPC_CPP_V2_CLIENT_SESSION_HELPER")
+	if helper == "" {
+		t.Fatal("SHMIPC_CPP_V2_CLIENT_SESSION_HELPER is not set")
+	}
+	directory := t.TempDir()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	port := listener.Addr().(*net.TCPAddr).Port
+	queuePath := filepath.Join(directory, "cpp-session-queue")
+	bufferPath := filepath.Join(directory, "cpp-session-buffer")
+	command := exec.Command(helper, "client", "127.0.0.1", strconv.Itoa(port), queuePath, bufferPath)
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	connection, err := listener.Accept()
+	if err != nil {
+		command.Process.Kill()
+		t.Fatal(err)
+	}
+	config := DefaultConfig()
+	config.LogOutput = io.Discard
+	config.InitializeTimeout = 5 * time.Second
+	session, sessionErr := newSession(config, connection, false)
+	if sessionErr == nil {
+		var stream *Stream
+		stream, sessionErr = session.AcceptStream()
+		if sessionErr == nil {
+			request := make([]byte, 20000)
+			_, sessionErr = io.ReadFull(stream, request)
+			if sessionErr == nil {
+				for _, value := range request {
+					if value != 0x3c {
+						sessionErr = fmt.Errorf("C++ request marker mismatch")
+						break
+					}
+				}
+			}
+			if sessionErr == nil {
+				_, sessionErr = stream.Write(bytes.Repeat([]byte{0x6b}, 17000))
+			}
+			if closeErr := stream.Close(); sessionErr == nil && closeErr != nil {
+				sessionErr = closeErr
+			}
+		}
+	}
+	if sessionErr != nil {
+		connection.Close()
+		command.Process.Kill()
+	}
+	helperErr := command.Wait()
+	if session != nil {
+		if closeErr := session.Close(); sessionErr == nil && closeErr != nil {
+			sessionErr = closeErr
+		}
+	}
+	if sessionErr != nil || helperErr != nil {
+		t.Fatalf("C++ client=%v Go server=%v", helperErr, sessionErr)
+	}
 }
 
 func TestBufferPoolInterop(t *testing.T) {

@@ -21,6 +21,7 @@
 - [files/src__transport__control_socket.hpp.md](files/src__transport__control_socket.hpp.md)：move-only socket/listener 与 exact IO
 - [files/src__transport__epoll_dispatcher.hpp.md](files/src__transport__epoll_dispatcher.hpp.md)：Linux epoll、读缓冲、写背压与关闭生命周期
 - [files/src__core__v2_handshake.hpp.md](files/src__core__v2_handshake.hpp.md)：v2 握手状态、资源 ownership 与错误模型
+- [files/src__core__v2_client_session.hpp.md](files/src__core__v2_client_session.hpp.md)：v2 client 单 Session/Stream 数据路径
 - [dirs/third_party__shmipc-go.md](dirs/third_party__shmipc-go.md)：Go 参考实现文件映射
 - [files/third_party__shmipc-go__const.go.md](files/third_party__shmipc-go__const.go.md)：协议与布局常量
 - [files/third_party__shmipc-go__protocol_event.go.md](files/third_party__shmipc-go__protocol_event.go.md)：控制协议事件格式
@@ -80,6 +81,8 @@
 | `src/transport/epoll_dispatcher.cpp` | ✅ | #linux #epoll #backpressure | ET 读、EPOLLOUT 等待、eventfd 停止与关闭串行化 |
 | `src/core/v2_handshake.hpp` | ✅ | #handshake #ownership #errors | v2 配置、结果与 move-only 共享资源聚合 |
 | `src/core/v2_handshake.cpp` | ✅ | #handshake #metadata #mapping | client 创建/发送与 server 接收/映射状态机 |
+| `src/core/v2_client_session.hpp` | ✅ | #session #stream #errors | 单 client Session/Stream API 与错误模型 |
+| `src/core/v2_client_session.cpp` | ✅ | #epoll #queue #buffer | Polling、消息收发、timeout 与 close 状态机 |
 | `tests/version_test.cpp` | ✅ | #test | 无第三方依赖的首个 library test |
 | `tests/control_header_golden_test.cpp` | ✅ | #test #protocol #golden | C++ 侧消费 control-header fixture |
 | `tests/protocol_codec_test.cpp` | ✅ | #test #protocol #negative | metadata/fallback round-trip 与异常输入测试 |
@@ -94,6 +97,8 @@
 | `tests/epoll_dispatcher_test.cpp` | ✅ | #test #linux #concurrency | partial frame、背压、并发写、callback/close 与资源上限 |
 | `tests/v2_handshake_test.cpp` | ✅ | #test #handshake #cleanup | v2 成功、方向、错误帧、mapping 与事务清理 |
 | `tests/v2_handshake_interop_helper.cpp` | ✅ | #test #interop #v2 | 固定 Go oracle 调用的双向握手 helper |
+| `tests/v2_client_session_test.cpp` | ✅ | #test #session #roundtrip | 单 Stream 跨 slice 双向消息、timeout 与 close |
+| `tests/v2_client_session_interop_helper.cpp` | ✅ | #test #interop #stream | C++ client→真实 Go server helper |
 | `tests/buffer_pool_interop_helper.cpp` | ✅ | #test #interop #chain | Go oracle 调用的 C++ 双向 chain helper |
 | `tests/data/golden/control_headers.txt` | ✅ | #protocol #golden | 事件 0..9 的 8 字节控制头基线 |
 | `tests/data/golden/shm_metadata.txt` | ✅ | #protocol #golden | v2 文件路径与 v3 memfd metadata 基线 |
@@ -135,6 +140,7 @@
 | C++ MPSC queue 与 Go 互操作 | `src/shm/shared_queue.*`, `tests/shared_queue*_helper.cpp`, `tools/go_oracle/` | `QUEUE-001..003` |
 | Unix/TCP 控制连接与 Linux 事件层 | `src/transport/control_socket.*`, `src/transport/epoll_dispatcher.*`, `tests/*transport*`, `tests/epoll_dispatcher_test.cpp` | `COMP-001`, `S-0301` |
 | Stream 多路复用 | `session.go`, `stream.go` | `STREAM-001..004` |
+| C++ v2 单 client Stream | `src/core/v2_client_session.*`, `tests/v2_client_session*` | `COMP-001`, `STREAM-001..002` |
 | 控制通道 fallback | `stream.go`, `protocol_manager.go` | `STREAM-003` |
 | 服务监听和热重启 | `listener.go`, `session_manager.go` | `API-002`, `OPS-001` |
 | 性能与稳定性指标 | `stats.go`, `bench_test.go` | `NFR-003`, `OBS-001` |
@@ -143,7 +149,7 @@
 
 - 已完成：上游架构分析、M0、M1、M2，以及 M3 `S-0301..0302`；提交 `3f2db07` 的 run `32151993614` 七项门禁全部成功。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
-- 待验证：完整 Session/Stream 数据交换。v2 初始化握手已在远端完成 Go client↔C++ server 与 C++ client↔Go server 双向验证。
+- 待验证：Go client→C++ server、多 Stream、fallback 与完整关闭矩阵。C++ client→Go server 单 Stream 已完成远端双向数据和关闭验证。
 
 ## 状态标记
 
