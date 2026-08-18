@@ -319,5 +319,5 @@ Evidence ID → Requirement IDs → Gate type → Result
 ## 15. 下一步
 
 1. 在 `S-0305` 扩展多 Stream、deadline/cancel 和完整错误传播。
-2. 为奇偶 Stream ID、并发创建/关闭、半关闭和 Session 断开建立 Go↔C++ 双向矩阵。
+2. 按固定 Go 实现的 client-originated 连续 Stream ID（2、3、4…）建立并发创建/关闭、半关闭和 Session 断开矩阵；不假定注释所称的奇偶分配或服务端主动开流。
 3. 保留 live-pool mapping、两个方向单 Stream 与 300 轮压力作为持续回归。

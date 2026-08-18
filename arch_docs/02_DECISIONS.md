@@ -195,6 +195,14 @@
 - live mapping：v2 文件握手没有 ACK。Go 写完 metadata 后可立即分配 slice；mapper 建立时只校验稳定 manager/list 布局及动态 head/tail 的边界和 stride 对齐，不判定可瞬时为 0 的 size，也不遍历要求全空的 free-list 快照。allocate/adopt/recycle 继续严格验证所操作 slice/chain。
 - 证据：`src/core/v2_server_session.hpp`、`src/core/v2_client_session.cpp`、`src/shm/buffer_pool.cpp`、`tests/v2_server_session_test.cpp` 与 `TestV2ServerSessionInterop`；远端 Debug/ASan 14/14、普通互操作 300/300、ASan helper 50/50；提交 `0347f34` 的 run `32158446306` 七项门禁与 Go oracle 15/15 通过。
 
+### D-024：固定 Go 多 Stream 是 client-originated 连续 ID，不按奇偶分配
+
+- 状态：源码已验证；指导 `S-0305`
+- ID 事实：`Session` 注释称 client/server 分别使用奇/偶 ID，但 client 初值 1、server 初值 2，`OpenStream()` 实际执行 `atomic.AddUint32(..., 1)`，因此 client 依次得到 2、3、4…，server 若调用则依次得到 3、4、5…；实现没有保持奇偶。
+- 方向事实：`getStream()` 仅在 `!isClient` 时为未知 opened ID 创建 Stream 并送入 `acceptCh`，源码同时标注 `todo support bidirectional streaming`。兼容切片只承诺 client Open→server Accept，不把 server 主动开流作为可互操作能力。
+- 关闭与 deadline：remote close 把 opened 转为 half-closed，剩余数据读尽后返回 EOF，写入因 `IsOpen()==false` 被拒绝；从 half-closed 本地 Close 不再发送确认。read/write deadline 是 Stream 上持久绝对时间，其中 write deadline 只约束 queue-full 重试。
+- 证据：`third_party/shmipc-go/session.go:35-39,145-152,249-290,560-583`、`stream.go:135-180,215-249,287-341,430-452`。
+
 ## 设计风险与待验证事实
 
 ### R-001：共享内存使用本机字节序和手工 offset
@@ -272,3 +280,4 @@
 - 2026-08-18：`S-0303` 新增 v2 client 单 Session/Stream，将握手资源接入 epoll，以 buffer chain、queue 和 Polling 完成消息收发及关闭；真实 Go server 互操作和远端 Debug/ASan/50 轮压力通过。提交 `050d7da` 的 GitHub Actions run `32154121843` 七项作业及关键步骤全部成功，Go protocol oracle 为 14/14，`S-0303` 正式关闭。影响文档：索引、概要、本文件、root/core/oracle 目录、关系图、项目工作流、移植计划、回归指南和功能矩阵。
 - 2026-08-18：`S-0304` 新增 v2 server 单 Stream，按真实 Go client 首个 ID 2 动态绑定，完成多消息、跨 slice 与两个方向的关闭互操作。300 轮压力发现并修正无 ACK 握手下 mapper 对活动 free-list 的错误快照假设；本机三套 Sanitizer、远端 Debug/ASan、普通 300/300 与 ASan 50/50 通过，等待云端门禁。影响文档：索引、概要、本文件、root/core/shm/oracle 目录、buffer pool/server session 文件、关系图、移植计划、回归指南和功能矩阵。
 - 2026-08-19：提交 `0347f34` 的 GitHub Actions run `32158446306` 七项作业及关键步骤全部成功，GCC/Clang Debug/Release 的安装验证实际执行，Go protocol oracle 为 15/15；`S-0304` 正式关闭。影响文档：索引、概要、本文件、root/core/oracle 目录、server session 文件、项目工作流、移植计划和功能矩阵。
+- 2026-08-19：`S-0305` 源码追踪证伪“奇偶 Stream ID”注释假设；固定 Go 实现按 1 递增且只支持 client-originated Open→server Accept。计划改为连续 ID 与单向开流兼容矩阵。影响文档：本文件、移植计划。
