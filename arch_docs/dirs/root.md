@@ -2,7 +2,7 @@
 
 ## Summary
 
-当前仓库已建立 C++17/CMake 可验证骨架，并已加入控制协议 codec、共享布局、RAII mapping、跨进程原子 buffer pool、零拷贝 Buffer IO、MPSC queue，以及 Unix/TCP control socket 基础层。
+当前仓库已建立 C++17/CMake 可验证骨架，并已加入控制协议 codec、共享布局、RAII mapping、跨进程原子 buffer pool、零拷贝 Buffer IO、MPSC queue，以及 Unix/TCP control socket 与 Linux epoll 事件层。
 
 ## Directory Contents（深度=1）
 
@@ -42,7 +42,8 @@
 - `src/shm/shared_queue.cpp:74-173` 实现 MPSC put/pop、batch 与 working flag；本机/远端压力、Sanitizer 及双向 Go oracle 通过。
 - `src/shm/buffer_io.cpp:42-491` 实现 Writer/Reader、单片零拷贝、跨片复制和 pin/release；本机 oracle/ASan+UBSan/TSan 与远端 GCC 8.5 Debug/ASan 通过。
 - 提交 `c1c23f9` 的 GitHub Actions run `32134325132` 中 GCC/Clang Debug/Release、ASan+UBSan、TSan 和 Go protocol oracle 七项全部成功，M2 完成。
-- `src/transport/control_socket.cpp:18-402` 实现 move-only FD、Unix/TCP connect/listen/accept 与 exact IO；本机三套配置及远端 GCC 8.5 Debug/ASan 10/10 通过。
+- `src/transport/control_socket.cpp:18-405` 实现 move-only FD、Unix/TCP connect/listen/accept 与 exact IO；本机三套配置及远端 GCC 8.5 Debug/ASan 10/10 通过。
+- `src/transport/epoll_dispatcher.cpp:71-578` 实现 edge-triggered epoll、消费式读缓冲、串行写背压、eventfd 停止与唯一关闭回调；远端 GCC 8.5 Debug/ASan 11/11、专项 100 次通过。
 
 ## Guesses & Uncertainties
 

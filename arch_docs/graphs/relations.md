@@ -21,7 +21,9 @@ graph TD
   pool["src/shm/buffer_pool"]
   buffer_io["src/shm/buffer_io"]
   transport["src/transport/control_socket"]
+  dispatcher["src/transport/epoll_dispatcher"]
   transport_test["tests/control_socket_test.cpp"]
+  dispatcher_test["tests/epoll_dispatcher_test.cpp"]
   atomic["src/shm/atomic_word"]
   interop["C++/Go buffer-chain oracle"]
   queue_interop["C++/Go queue oracle"]
@@ -48,8 +50,13 @@ graph TD
   buffer_layout -- reads/writes --> golden
   library -- contains --> mapping
   library -- contains --> transport
+  library -- contains --> dispatcher
   transport -- owns/connects/listens --> ctrl_socket["Unix/TCP socket FD"]
+  dispatcher -- consumes --> transport
+  dispatcher -- waits --> epoll["Linux epoll / eventfd"]
+  dispatcher -- dispatches --> ctrl_callback["consuming data / close callback"]
   transport_test -- calls --> transport
+  dispatcher_test -- calls --> dispatcher
   mapping -- owns --> os_mapping["mmap / file FD / memfd"]
   pool -- uses --> buffer_layout
   pool -- manages --> pool_bytes["tiered free lists / allocations"]

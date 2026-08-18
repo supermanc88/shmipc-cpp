@@ -6,7 +6,7 @@
 |---|---|
 | 项目类型 | Go 到 C++ 的跨语言、跨运行时重实现 |
 | 参考实现 | `third_party/shmipc-go` commit `55c241eea321071278d1ee7f7c46292d23e50a5b` |
-| 当前阶段 | M2 已完成；M3 `S-0301` 的 Unix/TCP + exact IO 基础层已通过本机/远端验证，继续实现 epoll dispatcher |
+| 当前阶段 | M2 已完成；M3 `S-0301` 实现已通过本机/远端 Linux Debug/ASan，等待云端 Linux TSan 后进入 `S-0302` |
 | 已确认目标 | 在 Linux 上提供现代 C++ 共享内存 IPC 库，并与固定 Go 实现双向互通；Go 仅用于开发验收 |
 | 流程依据 | 用户提供的《软件项目端到端标准工作流程》 |
 | 架构依据 | [上游架构概要](../arch_docs/01_OVERVIEW.md) 与 [决策/风险](../arch_docs/02_DECISIONS.md) |
@@ -183,7 +183,7 @@ tools/
 
 切片：
 
-- `S-0301`（进行中）：Unix/TCP 控制 transport 与 exact blocking IO 已完成；继续实现 Linux epoll dispatcher。
+- `S-0301`（待云端门禁）：Unix/TCP exact blocking IO 与 Linux edge-triggered epoll dispatcher 已完成；远端 Debug/ASan 通过，等待 Linux TSan。
 - `S-0302`：v2 `/dev/shm` 握手。
 - `S-0303`：单 Session/单 Stream C++ client↔Go server。
 - `S-0304`：Go client↔C++ server，加入多消息和关闭。
@@ -309,11 +309,12 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-M2-006`：提交 `4a0ef5c` 的 GitHub Actions run [`32131088262`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32131088262) 中 GCC/Clang Debug/Release、ASan+UBSan、TSan 与 Go queue oracle 七项作业全部成功。
 - `E-M2-007`：BufferWriter/Reader 覆盖 reserve/write/publish、单 slice borrowed view、跨 slice owned copy、peek/byte/string/discard、pin/release、析构回收与异常边界；20,000 字节 Go↔C++ helper 已改走生产 Buffer IO，并由 oracle 纠正为持续使用最大 tier 的上游分配语义。本机 Go oracle 10/10、ASan+UBSan 9/9、TSan 9/9，远端 GCC 8.5 Debug/ASan 各 9/9 通过；提交 `c1c23f9` 的 run [`32134325132`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32134325132) 七项作业全部成功。
 - `E-M3-001`：move-only control socket/listener 覆盖 adopted FD、partial exact IO、EOF/would-block、loopback TCP、pathname Unix socket、重复 bind、路径 unlink 与错误输入；本机 AppleClang Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 10/10 通过。
+- `E-M3-002`：Linux epoll dispatcher 覆盖 partial frame 保留、writev、EAGAIN/EPOLLOUT 背压、两个并发 writer 无帧交错、remote/local/shutdown close、buffer limit、callback 错误与 `on_data` 重入 close；远端 GCC 8.5 Debug/ASan 各 11/11，Debug 专项连续 100 次通过，等待云端 Linux TSan。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. 在 `S-0301` 实现 Linux edge-triggered epoll dispatcher、可消费 read buffer 和安全唤醒/关闭。
-2. 覆盖 partial frame、EAGAIN、并发串行写、remote/local close 和 dispatcher shutdown。
-3. 完成本机/远端/Sanitizer 后关闭 `S-0301`，再进入 v2 `/dev/shm` 握手。
+1. 推送 `S-0301` 提交并确认 GitHub Actions 七项门禁，重点检查 Linux TSan。
+2. 门禁通过后记录 run/commit，关闭 `S-0301`。
+3. 进入 `S-0302`：实现 v2 `/dev/shm` 握手及 C++↔Go 双向初始化验证。

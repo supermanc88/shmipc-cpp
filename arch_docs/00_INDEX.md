@@ -18,6 +18,7 @@
 - [files/src__shm__atomic_word.hpp.md](files/src__shm__atomic_word.hpp.md)：共享 32/64 位原子 primitive
 - [files/src__shm__shared_queue.hpp.md](files/src__shm__shared_queue.hpp.md)：MPSC queue 与 working flag
 - [files/src__transport__control_socket.hpp.md](files/src__transport__control_socket.hpp.md)：move-only socket/listener 与 exact IO
+- [files/src__transport__epoll_dispatcher.hpp.md](files/src__transport__epoll_dispatcher.hpp.md)：Linux epoll、读缓冲、写背压与关闭生命周期
 - [dirs/third_party__shmipc-go.md](dirs/third_party__shmipc-go.md)：Go 参考实现文件映射
 - [files/third_party__shmipc-go__const.go.md](files/third_party__shmipc-go__const.go.md)：协议与布局常量
 - [files/third_party__shmipc-go__protocol_event.go.md](files/third_party__shmipc-go__protocol_event.go.md)：控制协议事件格式
@@ -38,7 +39,7 @@
 | `src/` | [dirs/root.md](dirs/root.md) | ✅ | #implementation | C++ 库实现入口 |
 | `src/protocol/` | [dirs/src__protocol.md](dirs/src__protocol.md) | ✅ | #protocol #codec #safety | header、metadata 与 fallback 生产编解码 |
 | `src/shm/` | [dirs/src__shm.md](dirs/src__shm.md) | ✅ | #shared-memory #layout #mmap #zero-copy | 显式布局、mapping、pool、queue 与 Buffer IO |
-| `src/transport/` | [dirs/src__transport.md](dirs/src__transport.md) | ⏸️ | #transport #socket #epoll | Unix/TCP 基础层已完成，epoll dispatcher 待实现 |
+| `src/transport/` | [dirs/src__transport.md](dirs/src__transport.md) | ✅ | #transport #socket #epoll | Unix/TCP 基础层与 Linux epoll dispatcher 已完成本机/远端验证 |
 | `tests/` | [dirs/root.md](dirs/root.md) | ✅ | #tests | CTest 自动测试入口 |
 | `tools/go_oracle/` | [dirs/tools__go_oracle.md](dirs/tools__go_oracle.md) | ✅ | #go #oracle #golden | 固定 commit 校验与协议/数据平面 oracle |
 | `third_party/` | — | ✅ | #third-party | 外部参考实现聚合目录 |
@@ -72,6 +73,8 @@
 | `src/shm/shared_queue.cpp` | ✅ | #queue #atomic #interop | 本地 producer mutex、共享原子及唤醒状态机 |
 | `src/transport/control_socket.hpp` | ✅ | #transport #ownership #io | socket/listener ownership、错误和工厂接口 |
 | `src/transport/control_socket.cpp` | ✅ | #tcp #unix #posix | connect/listen/accept、exact IO 与路径清理 |
+| `src/transport/epoll_dispatcher.hpp` | ✅ | #transport #epoll #lifecycle | dispatcher、event connection、callback 与关闭原因接口 |
+| `src/transport/epoll_dispatcher.cpp` | ✅ | #linux #epoll #backpressure | ET 读、EPOLLOUT 等待、eventfd 停止与关闭串行化 |
 | `tests/version_test.cpp` | ✅ | #test | 无第三方依赖的首个 library test |
 | `tests/control_header_golden_test.cpp` | ✅ | #test #protocol #golden | C++ 侧消费 control-header fixture |
 | `tests/protocol_codec_test.cpp` | ✅ | #test #protocol #negative | metadata/fallback round-trip 与异常输入测试 |
@@ -83,6 +86,7 @@
 | `tests/buffer_pool_test.cpp` | ✅ | #test #allocator #corruption | 档位回退、角色 ownership、耗尽回收与损坏 header |
 | `tests/buffer_io_test.cpp` | ✅ | #test #zero-copy #lifetime | Writer/Reader、跨片慢路径、pin/release 与 RAII |
 | `tests/control_socket_test.cpp` | ✅ | #test #transport #socket | partial IO、EOF、would-block、TCP/Unix 与清理 |
+| `tests/epoll_dispatcher_test.cpp` | ✅ | #test #linux #concurrency | partial frame、背压、并发写、callback/close 与资源上限 |
 | `tests/buffer_pool_interop_helper.cpp` | ✅ | #test #interop #chain | Go oracle 调用的 C++ 双向 chain helper |
 | `tests/data/golden/control_headers.txt` | ✅ | #protocol #golden | 事件 0..9 的 8 字节控制头基线 |
 | `tests/data/golden/shm_metadata.txt` | ✅ | #protocol #golden | v2 文件路径与 v3 memfd metadata 基线 |
@@ -130,7 +134,7 @@
 
 ## 分析进度
 
-- 已完成：上游架构分析、M0、M1、M2；M3 `S-0301` 的 Unix/TCP 与 exact IO 基础层已通过本机/远端验证。
+- 已完成：上游架构分析、M0、M1、M2；M3 `S-0301` 实现已通过本机及远端 Linux Debug/ASan，等待云端 Linux TSan 后关闭。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
 - 待验证：完整 Session 的 Go↔C++ 双向互操作。BufferReader/Writer、pool/queue 原子语义和双向数据平面均已云端验证。
 

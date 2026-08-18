@@ -30,6 +30,7 @@ add_library(
     src/shm/shared_queue.cpp
     src/shm/shared_memory_region.cpp
     src/transport/control_socket.cpp
+    src/transport/epoll_dispatcher.cpp
     src/version.cpp
 )
 add_library(shmipc::shmipc ALIAS shmipc)

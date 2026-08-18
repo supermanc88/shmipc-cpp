@@ -12,6 +12,9 @@ enum class TransportError {
     invalid_state,
     end_of_stream,
     would_block,
+    unsupported,
+    buffer_limit,
+    callback_error,
     system_error,
 };
 

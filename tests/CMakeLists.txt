@@ -82,6 +82,12 @@ target_include_directories(shmipc_control_socket_test PRIVATE ${PROJECT_SOURCE_D
 shmipc_apply_project_options(shmipc_control_socket_test)
 add_test(NAME shmipc.control_socket COMMAND shmipc_control_socket_test)
 
+add_executable(shmipc_epoll_dispatcher_test epoll_dispatcher_test.cpp)
+target_link_libraries(shmipc_epoll_dispatcher_test PRIVATE shmipc::shmipc Threads::Threads)
+target_include_directories(shmipc_epoll_dispatcher_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+shmipc_apply_project_options(shmipc_epoll_dispatcher_test)
+add_test(NAME shmipc.epoll_dispatcher COMMAND shmipc_epoll_dispatcher_test)
+
 add_executable(shmipc_buffer_pool_interop_helper buffer_pool_interop_helper.cpp)
 target_link_libraries(shmipc_buffer_pool_interop_helper PRIVATE shmipc::shmipc)
 target_include_directories(shmipc_buffer_pool_interop_helper PRIVATE ${PROJECT_SOURCE_DIR}/src)

@@ -260,6 +260,12 @@ const char* to_string(TransportError error) noexcept {
             return "end of stream";
         case TransportError::would_block:
             return "would block";
+        case TransportError::unsupported:
+            return "unsupported";
+        case TransportError::buffer_limit:
+            return "buffer limit";
+        case TransportError::callback_error:
+            return "callback error";
         case TransportError::system_error:
             return "system error";
     }

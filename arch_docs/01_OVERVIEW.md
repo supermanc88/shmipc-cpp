@@ -121,7 +121,7 @@
 - C++ mapping 入口：`src/shm/shared_memory_region.hpp`。move-only owner 统一管理 `munmap`、memfd descriptor 与创建端路径清理；文件 mapper 不 unlink，memfd API 显式区分 borrowed/transferred descriptor。
 - C++ buffer pool 入口：`src/shm/buffer_pool.hpp`。单 slice 从最小合适档位开始，chain 从最大档位向下分配；size/head/tail/counters 使用 lock-free seq_cst 原子，publish/adopt 以绝对 offset 在进程间转移链式 slice 所有权。
 - C++ Buffer IO 入口：`src/shm/buffer_io.hpp`。Writer 复现 Go 的最大档位连续分配策略并发布 chain；Reader 对单片返回 pinned 借用 view、对跨片返回 owned copy，`release_previous_read` 与 RAII 析构负责回收。
-- C++ control transport 入口：`src/transport/control_socket.hpp`。move-only socket/listener 支持 Unix/TCP connect/listen/accept、exact blocking IO、partial progress、EOF/would-block 分类，以及显式 nonblocking 切换；Linux epoll dispatcher 尚在 `S-0301` 内继续实现。
+- C++ control transport 入口：`src/transport/control_socket.hpp` 与 `epoll_dispatcher.hpp`。握手期使用 move-only Unix/TCP socket 和 exact blocking IO；事件期切换 nonblocking edge-triggered epoll，以消费式缓冲 callback、串行写和 eventfd 停止管理连接。
 - Go oracle 入口：`go run tools/go_oracle/run_control_header_oracle.go`；严格校验 submodule commit 后，以 overlay 调用上游 header、metadata 与 fallback 编码器核对三份 golden。CMake 可通过 `SHMIPC_ENABLE_GO_ORACLE_TESTS=ON` 将其加入 CTest。
 - C++ CI 入口：`.github/workflows/ci.yml`。Ubuntu 24.04 上运行 GCC/Clang × Debug/Release 四项构建、CTest 和安装；另以 GCC 分别运行 ASan+UBSan 与 TSan，并以 Go 1.25.10 运行协议/数据平面 oracle。
 - 本地测试：`go test ./...`；上游测试实际依赖 Linux，macOS 不构成有效通过环境。
@@ -140,7 +140,7 @@
 - `S-0203` 验证：本机 20 轮、远端 10 轮双进程并发分配回收通过；双向 oracle 完成 C++→Go→C++ 两条 20,000 字节链并恢复 free-list/counters；提交 `281d024` 的 run `32129419428` 七项作业全部成功。
 - `S-0204` 验证：4 producer/单 consumer 并发 20,000 elements、父子进程 20,000 次环绕、1,000 轮 working 竞争和双向 Go↔C++ 各 1,000 elements 通过；提交 `4a0ef5c` 的 run `32131088262` 七项作业全部成功。
 - `S-0205` 验证：reserve/write/publish、单 slice 零拷贝、跨 slice owned copy、peek、byte/string/discard、pin/release 与析构回收已通过本机 Go oracle 10/10、ASan+UBSan 9/9、TSan 9/9，以及远端 GCC 8.5 Debug/ASan 9/9；提交 `c1c23f9` 的 run `32134325132` 七项作业全部成功，M2 完成。
-- `S-0301` 基础层验证：socketpair partial/EOF/would-block、真实 loopback TCP、pathname Unix socket、重复 bind、路径清理和 move-only ownership 已通过本机 Debug/ASan+UBSan/TSan 与远端 GCC 8.5 Debug/ASan；epoll 子切片待完成。
+- `S-0301` 验证：socket 基础层覆盖 partial/EOF/would-block、TCP/Unix 和路径所有权；Linux epoll 层覆盖 partial frame 保留、writev、EAGAIN 背压、并发写无交错、关闭原因/唯一通知、callback 契约和缓冲上限。远端 GCC 8.5 Debug/ASan 11/11、专项连续 100 次通过，等待云端 Linux TSan。
 - 时钟注意：本机当前比远端快约 2 分 20 秒；同步时不得保留本机文件时间戳，否则 Ninja 会反复重新生成。标准命令见 `PROJECT_WORKFLOW.md`。
 - Linux 运行基线：本机用 Go 1.25.10 交叉编译固定提交的 amd64 测试二进制，rsync 至远端后完整测试 `PASS`、退出码 0；覆盖 v2、v3/memfd、队列、Stream/Session 和热重启路径。
 - CI：`.github/workflows/tests.yaml` 在 Ubuntu 运行单测/benchmark，并在自托管 Linux 上覆盖 Go 1.21–1.25；`.github/workflows/pre_check.yaml` 运行许可证、拼写和 golangci-lint。

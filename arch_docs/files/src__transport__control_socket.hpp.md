@@ -13,6 +13,9 @@
 - `invalid_state`
 - `end_of_stream`
 - `would_block`
+- `unsupported`
+- `buffer_limit`
+- `callback_error`
 - `system_error`
 
 ## Structs and Aliases（全量）
@@ -45,9 +48,9 @@
 
 ## Evidence
 
-- 完整接口：`src/transport/control_socket.hpp:9-106`。
+- 完整接口：`src/transport/control_socket.hpp:9-109`。
 - FD 配置、ownership 与 IO：`src/transport/control_socket.cpp:18-176`。
-- connect/listen/accept：`src/transport/control_socket.cpp:179-402`。
+- connect/listen/accept：`src/transport/control_socket.cpp:179-405`。
 - 自动测试：`tests/control_socket_test.cpp:18-173`。
 
 ## Links
