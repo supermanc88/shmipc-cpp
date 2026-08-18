@@ -98,7 +98,7 @@ Sanitizer 使用独立构建目录，不能混用编译产物：`build/asan`、`
 
 - 常规矩阵：Ubuntu 24.04，GCC/Clang × Debug/Release，执行配置、编译、CTest 和安装。
 - Sanitizer 矩阵：GCC Debug，分别执行 ASan+UBSan 和 TSan。
-- Go oracle：Go 1.25.10，校验固定 submodule commit，并运行 header、metadata 与 fallback golden test。
+- Go oracle：Go 1.25.10，校验固定 submodule commit，并运行 header、metadata、fallback 与当前运行架构 queue layout golden test。
 - checkout 使用只读仓库权限、禁用凭据持久化，并递归拉取固定 Go submodule。
 
 远程主机用于开发中快速复核，GitHub Actions 用于独立环境门禁；两者结果分别记录，不相互冒充。2026-08-18 首轮 GitHub Actions run `32116398237` 的六个矩阵作业全部通过，建立了 `S-0002` 云端基线。
@@ -163,8 +163,9 @@ ssh 23.2 '
 7. 在远程运行对应 Debug 测试；布局、并发、内存、构建系统变化进入完整门禁。
 8. 互操作切片分别运行 Go client↔C++ server 和 C++ client↔Go server，v2/v3 分开记录。
 9. 若稳定自动化测试已完整覆盖验收目标，自测通过并更新 evidence 后直接创建本地候选提交，无需再次等待用户确认。
-10. 若仍需要用户参与设备、交互、主观判断或其他人工测试，提供可重复的验收命令、输入和预期结果，等待用户确认后再提交。
-11. 本地 commit 不等于远程授权；`git push`、发布、PR 等远程写操作仍由用户执行或逐次明确授权。远程 CI 通过后标记切片完成。
+10. 连续的小切片优先积累为一批本地提交，达到稳定检查点、需要 GitHub Actions 独立证据或进入关键决策门时再请用户统一 push。
+11. 若仍需要用户参与设备、交互、主观判断或其他人工测试，提供可重复的验收命令、输入和预期结果，等待用户确认后再提交。
+12. 本地 commit 不等于远程授权；`git push`、发布、PR 等远程写操作仍由用户执行或逐次明确授权。远程 CI 通过后标记切片完成。
 
 ## 7. 远程证据记录
 

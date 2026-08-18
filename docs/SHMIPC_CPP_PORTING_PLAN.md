@@ -6,7 +6,7 @@
 |---|---|
 | 项目类型 | Go 到 C++ 的跨语言、跨运行时重实现 |
 | 参考实现 | `third_party/shmipc-go` commit `55c241eea321071278d1ee7f7c46292d23e50a5b` |
-| 当前阶段 | M1 `S-0101` 的控制协议生产 codec 已通过本机与远端门禁，待 push 后补 GitHub Actions 独立证据 |
+| 当前阶段 | M1 `S-0101` 已完成；`S-0102` queue 双架构显式布局访问器已通过本机与远端门禁，暂随本地提交批次等待云端验证 |
 | 已确认目标 | 在 Linux 上提供现代 C++ 共享内存 IPC 库，并与固定 Go 实现双向互通；Go 仅用于开发验收 |
 | 流程依据 | 用户提供的《软件项目端到端标准工作流程》 |
 | 架构依据 | [上游架构概要](../arch_docs/01_OVERVIEW.md) 与 [决策/风险](../arch_docs/02_DECISIONS.md) |
@@ -156,8 +156,8 @@ tools/
 
 切片：
 
-- `S-0101`（本地与远端已验证，待云端）：控制 header、事件枚举、metadata 和 fallback 编解码。
-- `S-0102`：queue header/element 的 amd64 与 arm64 显式布局访问器。
+- `S-0101`（已验证）：控制 header、事件枚举、metadata 和 fallback 编解码；run `32122127419` 七项作业全部成功。
+- `S-0102`（本地与远端已验证，待云端）：queue header/element 的 amd64 与 arm64 显式布局访问器。
 - `S-0103`：buffer manager/list/slice layout probe，专项验证 counter `+20/+24` 差异。
 - `S-0104`：损坏输入 corpus：截断、超长、溢出、非法 offset 和循环链。
 
@@ -232,7 +232,8 @@ tools/
 4. 运行相关测试、Debug 构建、`diff --check`；内存/并发/布局切片进入完整 Sanitizer 门禁。
 5. 对互操作切片启动准确版本的 Go/C++ 对端，保存命令、日志摘要和 commit。
 6. 稳定自动化测试可完整覆盖时，自测通过并记录 evidence 后直接创建本地候选提交。
-7. 只有需要用户参与设备、交互或主观判断等人工验收时才等待确认；`git push`、发布和 PR 等远程写操作仍需用户执行或逐次授权，远程 CI 通过后标记完成。
+7. 连续小切片优先积累为一批本地提交，在稳定检查点、云端证据需求或关键决策门前统一 push。
+8. 只有需要用户参与设备、交互或主观判断等人工验收时才等待确认；`git push`、发布和 PR 等远程写操作仍需用户执行或逐次授权，远程 CI 通过后标记完成。
 
 ## 11. 测试策略
 
@@ -291,12 +292,13 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-M0-002`：用户安装 `libasan-8.5.0` 后，远端独立 ASan 构建和 CTest 通过；UBSan/TSan 仍因缺失对应 `/usr/lib64` runtime 而阻塞。
 - `E-M0-003`：提交 `eeae84e` 的 GitHub Actions run [`32116398237`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32116398237) 总结论 success；GCC/Clang × Debug/Release、ASan+UBSan、TSan 六项均执行并通过，常规四项安装验证通过。
 - `E-M0-004`：固定 commit runner 与 overlay oracle 在本机通过；10 类 control-header golden（SHA-256 `ee6379a976c47c4d81c894ecf110132884ee8e48086091338cb17a8d8765fdfa`）被 Go `header.encode` 和 C++ test 共同验证，远端 GCC 8.5 Debug/ASan 两项 C++ 测试通过；提交 `34ef510` 的 GitHub Actions run [`32119710781`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32119710781) 中 Go oracle 与完整七项矩阵全部成功。
-- `E-M1-001`：生产 codec 覆盖 8 字节 header、事件 0..9、v2/v3 metadata 与 fallback；三份 golden 同时由固定 Go 编码器和 C++ round-trip 使用，并覆盖截断、非法字段、错误事件、尾随字节和帧上限。macOS AppleClang Debug/ASan+UBSan 与远端 Linux GCC 8.5 Debug/ASan 均通过；云端证据待本地提交 push 后补录。
+- `E-M1-001`：生产 codec 覆盖 8 字节 header、事件 0..9、v2/v3 metadata 与 fallback；三份 golden 同时由固定 Go 编码器和 C++ round-trip 使用，并覆盖截断、非法字段、错误事件、尾随字节和帧上限。macOS AppleClang Debug/ASan+UBSan 与远端 Linux GCC 8.5 Debug/ASan 均通过；提交 `603933e` 的 GitHub Actions run [`32122127419`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32122127419) 七项作业全部成功。
+- `E-M1-002`：queue golden（SHA-256 `3c2dba47b214fe158582c7cb31ec9b74fa060819d848a87b253c1cf83d721697`）锁定 amd64 的 `cap/head/tail/working = 0/4/12/20` 与 arm64 的 `0/8/16/4`，element 均为 24 字节后连续三个 uint32。Go oracle 分别在 Darwin arm64 与 amd64 运行路径通过；C++ 双布局测试及远端 Linux GCC 8.5 Debug/ASan 通过，云端证据随下一批 push 补录。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. 提交并 push `S-0101`，确认 GitHub Actions 七项矩阵全部通过后将其标记完成。
-2. 进入 `S-0102`：实现 queue header/element 的 amd64 与 arm64 显式布局访问器。
-3. 不跨越 `S-0103` 的 counter offset 决策门进入 buffer 共享布局实现。
+1. 创建 `S-0102` 本地提交后进入 `S-0103`，专项验证 buffer counter `+20/+24` 差异。
+2. 在 `S-0103` 得出实验结论并形成兼容决策，不带着未决 offset 进入 buffer 分配器实现。
+3. 连续自动化切片积累到稳定批次后统一 push，并补齐 GitHub Actions evidence。

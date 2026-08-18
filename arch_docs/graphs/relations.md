@@ -14,6 +14,7 @@ graph TD
   upstream["third_party/shmipc-go encoders"]
   golden["header / metadata / fallback fixtures"]
   codec["src/protocol/control_codec"]
+  queue_layout["src/shm/queue_layout"]
   golden_test["C++ codec tests"]
 
   consumer -- includes --> public
@@ -28,6 +29,8 @@ graph TD
   golden_test -- calls --> codec
   golden_test -- reads/verifies --> golden
   library -- contains --> codec
+  library -- contains --> queue_layout
+  queue_layout -- reads/writes --> golden
   ci -- runs --> runner
 ```
 

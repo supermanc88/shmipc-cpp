@@ -26,7 +26,7 @@
 - `tests/control_header_golden_test.cpp`：事件 0..9 的 production header codec 与固定 fixture 一致。
 - `tests/protocol_codec_test.cpp:46-199`：metadata/fallback round-trip 及截断、非法字段、错误事件、尾随字节、帧上限测试。
 - `tools/go_oracle/control_header_oracle_test.gotxt:13-192`：同一 fixture 经固定 Go 真实编码路径验证。
-- 2026-08-18：macOS AppleClang Debug/ASan+UBSan 与远端 Linux GCC 8.5 Debug/ASan 全部通过；云端证据待 push。
+- 2026-08-18：macOS AppleClang Debug/ASan+UBSan 与远端 Linux GCC 8.5 Debug/ASan 全部通过；提交 `603933e` 的 GitHub Actions run `32122127419` 七项作业全部成功。
 
 ## Links
 

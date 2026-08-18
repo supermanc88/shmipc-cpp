@@ -53,7 +53,8 @@ ssh 23.2 '
 - `shmipc.version`：公共头与链接库版本一致。
 - `shmipc.control_header_golden`：生产 codec 完整消费 10 类控制事件 fixture，字段与大端字节一致。
 - `shmipc.protocol_codec`：metadata/fallback 正反向 golden 一致，并拒绝截断、尾随字节、非法 magic/version/type、错误 payload 事件、超长字段和超过配置上限的帧。
-- `shmipc.go_protocol_oracle`：固定 Go 上游的真实 header、metadata 与 fallback 编码器和同一 fixture 逐字节一致。
+- `shmipc.queue_layout`：C++ 同时验证 amd64/arm64 header offsets、12 字节 element、region size、越界 slot、截断和 arm64 manager 对齐限制。
+- `shmipc.go_protocol_oracle`：固定 Go 上游的真实 header、metadata、fallback 编码器及当前运行架构 queue 指针布局和同一 fixture 逐字节一致。
 - 任一 commit mismatch、缺行、重复/错序事件或字节差异均为失败，不允许自动更新 golden 后绕过评审。
 
 当前 golden 的 SHA-256：
@@ -61,3 +62,4 @@ ssh 23.2 '
 - `control_headers.txt`：`ee6379a976c47c4d81c894ecf110132884ee8e48086091338cb17a8d8765fdfa`
 - `shm_metadata.txt`：`5e5e66b2563feb9d0b96f4c5cdb5922cd72e87b6bbfec4b49965e7b1bc5f1fba`
 - `fallback_data.txt`：`ce97f80676a92066b62b0127d0ae5561ed7be2bc8035c88c98fc79db82b77f94`
+- `queue_layout.txt`：`3c2dba47b214fe158582c7cb31ec9b74fa060819d848a87b253c1cf83d721697`

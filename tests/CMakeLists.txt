@@ -27,6 +27,17 @@ target_compile_definitions(
 )
 add_test(NAME shmipc.protocol_codec COMMAND shmipc_protocol_codec_test)
 
+add_executable(shmipc_queue_layout_test queue_layout_test.cpp)
+target_link_libraries(shmipc_queue_layout_test PRIVATE shmipc::shmipc)
+target_include_directories(shmipc_queue_layout_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+shmipc_apply_project_options(shmipc_queue_layout_test)
+target_compile_definitions(
+    shmipc_queue_layout_test
+    PRIVATE
+        SHMIPC_QUEUE_LAYOUT_GOLDEN_PATH="${CMAKE_CURRENT_SOURCE_DIR}/data/golden/queue_layout.txt"
+)
+add_test(NAME shmipc.queue_layout COMMAND shmipc_queue_layout_test)
+
 if(SHMIPC_ENABLE_GO_ORACLE_TESTS)
     find_program(SHMIPC_GO_EXECUTABLE go)
     if(NOT SHMIPC_GO_EXECUTABLE)

@@ -2,7 +2,7 @@
 
 ## Summary
 
-当前仓库已建立 C++17/CMake 可验证骨架，并已加入首个生产模块：控制 header、事件、共享内存 metadata 与 fallback codec。静态 library target、CTest、编译告警/Sanitizer、安装导出及固定 Go control-protocol oracle 均已接入；共享内存数据平面尚未开始。
+当前仓库已建立 C++17/CMake 可验证骨架，并已加入控制协议 codec 与 queue 双架构显式布局访问器。静态 library target、CTest、编译告警/Sanitizer、安装导出及固定 Go oracle 均已接入；共享内存分配器和并发 queue 算法尚未开始。
 
 ## Directory Contents（深度=1）
 
@@ -16,7 +16,7 @@
 | `cmake/` | 目录 | ✅ | 工程选项与 package config 模板 |
 | `docs/` | 目录 | ✅ | C++ 移植计划与项目标准工作流 |
 | `include/shmipc/` | 目录 | ✅ | 公共 C++ API；当前为版本接口 |
-| `src/` | 目录 | ✅ | library 实现；包含版本接口与内部 control codec |
+| `src/` | 目录 | ✅ | library 实现；包含版本、control codec 与 queue layout |
 | `tests/` | 目录 | ✅ | CTest 测试 target |
 | `third_party/` | 目录 | ✅ | 上游参考实现聚合目录 |
 | `tools/` | 目录 | ✅ | Go oracle 等开发验证工具 |
@@ -32,7 +32,9 @@
 - `tools/go_oracle/run_control_header_oracle.go:31-68` 校验固定 commit，并以临时 overlay 调用真实上游编码器；`tests/control_header_golden_test.cpp` 消费同一 fixture。
 - 2026-08-18：提交 `34ef510` 的 GitHub Actions run `32119710781` 七项作业全部通过，包括独立 Go control-header oracle。
 - `src/protocol/control_codec.cpp:110-275` 实现 header、metadata 与 fallback 编解码；`tests/protocol_codec_test.cpp:46-199` 验证 golden round-trip 与异常输入。
-- 2026-08-18：`S-0101` 在本机 AppleClang Debug/ASan+UBSan 和远端 GCC 8.5 Debug/ASan 下通过；云端证据待 push。
+- 2026-08-18：`S-0101` 在本机 AppleClang Debug/ASan+UBSan 和远端 GCC 8.5 Debug/ASan 下通过。
+- 2026-08-18：提交 `603933e` 的 GitHub Actions run `32122127419` 七项作业全部成功，`S-0101` 完成。
+- `src/shm/queue_layout.cpp:81-192` 实现双架构偏移、region size 和 header/element 边界访问；`tests/queue_layout_test.cpp:48-175` 验证两套 golden 与错误路径。
 
 ## Guesses & Uncertainties
 

@@ -15,7 +15,8 @@
 | ASan+UBSan/TSan CI | 已验证 | `S-0002`，run `32116398237` | 核心内存/并发切片强制进入门禁 |
 | 固定 Go oracle commit 校验 | 已验证 | run `32119710781` Go 1.25.10 作业 | 升级 submodule 时强制重验 |
 | control-header golden | 已验证 | Go/C++/远端/云端共同验证 | 持续作为生产 codec 回归输入 |
-| metadata/fallback golden | 本地与远端已验证 | 固定 Go 编码器、C++ round-trip、GCC 8.5/ASan | push 后补 GitHub Actions 证据 |
+| metadata/fallback golden | 已验证 | 固定 Go 编码器、C++ round-trip、run `32122127419` | 持续回归 |
+| amd64/arm64 queue layout golden | 本地与远端已验证 | 两架构 Go oracle、C++ 双布局、GCC 8.5/ASan | 随下一批 push 补云端证据 |
 
 ## 产品需求
 
@@ -23,10 +24,12 @@
 |---|---|---|---|
 | `COMP-001` | Go↔C++ v2 双向互通 | 基线锁定 | M3 |
 | `COMP-002` | Go↔C++ v3 双向互通 | 基线锁定 | M4 |
-| `PROTO-001` | 控制头、事件、metadata 与 fallback 编解码 | 本地与远端已验证，待云端 | `S-0101` |
+| `PROTO-001` | 控制头、事件、metadata 与 fallback 编解码 | 已验证 | `S-0101` |
 | `PROTO-002` | v2/v3 初始化状态机 | 未开始 | `S-0401` |
 | `SHM-001..004` | 布局、分配回收、零拷贝、安全边界 | 未开始 | M1/M2 |
-| `QUEUE-001..003` | MPSC queue、唤醒与跨架构对齐 | 未开始 | M1/M2 |
+| `QUEUE-001` | MPSC queue put/pop | 布局访问器已验证，并发算法未开始 | `S-0102`/`S-0204` |
+| `QUEUE-002` | working flag 与批量唤醒 | 字段布局已验证，状态算法未开始 | `S-0204` |
+| `QUEUE-003` | amd64/arm64 原子对齐 | byte layout 已验证，原子访问待实现 | `S-0102`/`S-0204` |
 | `STREAM-001..004` | 多路复用、读写、fallback、关闭 | 未开始 | M3/M4 |
 | `API-001` | RAII Session/Stream API | 未开始 | M3 |
 | `API-002..003` | Listener/SessionManager/异步 API | 未开始 | M5 |

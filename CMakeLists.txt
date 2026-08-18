@@ -23,6 +23,7 @@ include(ShmipcProjectOptions)
 add_library(
     shmipc
     src/protocol/control_codec.cpp
+    src/shm/queue_layout.cpp
     src/version.cpp
 )
 add_library(shmipc::shmipc ALIAS shmipc)

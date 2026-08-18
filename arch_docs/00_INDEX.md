@@ -6,8 +6,10 @@
 - [02_DECISIONS.md](02_DECISIONS.md)：已验证结论、风险与待决策项
 - [dirs/root.md](dirs/root.md)：当前 C++ 工程根目录
 - [dirs/src__protocol.md](dirs/src__protocol.md)：C++ 控制协议生产 codec
+- [dirs/src__shm.md](dirs/src__shm.md)：C++ 共享内存显式布局访问器
 - [dirs/tools__go_oracle.md](dirs/tools__go_oracle.md)：固定 Go control-protocol oracle
 - [files/src__protocol__control_codec.hpp.md](files/src__protocol__control_codec.hpp.md)：生产 codec 完整接口与错误模型
+- [files/src__shm__queue_layout.hpp.md](files/src__shm__queue_layout.hpp.md)：queue 布局常量、类型和完整接口
 - [dirs/third_party__shmipc-go.md](dirs/third_party__shmipc-go.md)：Go 参考实现文件映射
 - [files/third_party__shmipc-go__const.go.md](files/third_party__shmipc-go__const.go.md)：协议与布局常量
 - [files/third_party__shmipc-go__protocol_event.go.md](files/third_party__shmipc-go__protocol_event.go.md)：控制协议事件格式
@@ -27,6 +29,7 @@
 | `include/shmipc/` | [dirs/root.md](dirs/root.md) | ✅ | #public-api | 公共 C++ 头文件入口 |
 | `src/` | [dirs/root.md](dirs/root.md) | ✅ | #implementation | C++ 库实现入口 |
 | `src/protocol/` | [dirs/src__protocol.md](dirs/src__protocol.md) | ✅ | #protocol #codec #safety | header、metadata 与 fallback 生产编解码 |
+| `src/shm/` | [dirs/src__shm.md](dirs/src__shm.md) | ✅ | #shared-memory #layout | queue 的 amd64/arm64 byte accessors |
 | `tests/` | [dirs/root.md](dirs/root.md) | ✅ | #tests | CTest 自动测试入口 |
 | `tools/go_oracle/` | [dirs/tools__go_oracle.md](dirs/tools__go_oracle.md) | ✅ | #go #oracle #golden | 固定 commit 校验与 control-protocol oracle |
 | `third_party/` | — | ✅ | #third-party | 外部参考实现聚合目录 |
@@ -45,12 +48,16 @@
 | `src/version.cpp` | ✅ | #implementation #version | 版本 API 实现 |
 | `src/protocol/control_codec.hpp` | ✅ | #protocol #codec #errors | 生产 codec 类型、常量和完整接口 |
 | `src/protocol/control_codec.cpp` | ✅ | #protocol #codec #big-endian | 显式大端编解码与帧边界验证 |
+| `src/shm/queue_layout.hpp` | ✅ | #shared-memory #layout #errors | queue 布局常量、类型与完整访问接口 |
+| `src/shm/queue_layout.cpp` | ✅ | #shared-memory #layout #bounds | native-endian memcpy 访问与边界校验 |
 | `tests/version_test.cpp` | ✅ | #test | 无第三方依赖的首个 library test |
 | `tests/control_header_golden_test.cpp` | ✅ | #test #protocol #golden | C++ 侧消费 control-header fixture |
 | `tests/protocol_codec_test.cpp` | ✅ | #test #protocol #negative | metadata/fallback round-trip 与异常输入测试 |
+| `tests/queue_layout_test.cpp` | ✅ | #test #layout #amd64 #arm64 | 双架构 queue golden 与异常输入测试 |
 | `tests/data/golden/control_headers.txt` | ✅ | #protocol #golden | 事件 0..9 的 8 字节控制头基线 |
 | `tests/data/golden/shm_metadata.txt` | ✅ | #protocol #golden | v2 文件路径与 v3 memfd metadata 基线 |
 | `tests/data/golden/fallback_data.txt` | ✅ | #protocol #golden | fallback stream/status/payload 基线 |
+| `tests/data/golden/queue_layout.txt` | ✅ | #queue #golden #layout | amd64/arm64 queue header 与 element byte 基线 |
 | `tools/go_oracle/run_control_header_oracle.go` | ✅ | #go #oracle | 固定 commit 检查与无侵入 overlay runner |
 | `third_party/shmipc-go/const.go` | ✅ | #protocol #constants | 协议版本、共享内存模式、默认容量和头部尺寸 |
 | `third_party/shmipc-go/protocol_event.go` | ✅ | #wire-format | 8 字节大端控制头和事件类型 |
@@ -76,6 +83,7 @@
 | v3 `memfd` + SCM_RIGHTS | `protocol_initializer.go`, `protocol_manager.go`, `block_io.go` | `COMP-002`, `PLAT-002` |
 | 共享内存分配与回收 | `buffer_manager.go`, `buffer_slice.go`, `buffer.go` | `SHM-001..004` |
 | 批量 IO 队列 | `queue.go`, `session.go`, `protocol_manager.go` | `QUEUE-001..003` |
+| C++ queue layout accessors | `src/shm/queue_layout.*`, `tests/data/golden/queue_layout.txt` | `QUEUE-001..003` |
 | Stream 多路复用 | `session.go`, `stream.go` | `STREAM-001..004` |
 | 控制通道 fallback | `stream.go`, `protocol_manager.go` | `STREAM-003` |
 | 服务监听和热重启 | `listener.go`, `session_manager.go` | `API-002`, `OPS-001` |
@@ -83,7 +91,7 @@
 
 ## 分析进度
 
-- 已完成：上游顶层模块、协议头、握手、共享内存布局、队列、buffer 生命周期、Session/Stream 主链路、公开 API、测试与 CI 基线分析；M0 已完成，M1 `S-0101` 的 C++ 生产 codec 已通过本机与远端验证，待云端证据。
+- 已完成：上游架构分析与 M0；M1 `S-0101` 已经云端验证，`S-0102` 的 amd64/arm64 queue 显式布局已通过本机与远端验证，待批次云端证据。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
 - 待验证：C++ 与 Go 的双向互操作、共享内存原子内存序、`bufferList.counter` 偏移差异。固定 Go 基线已在远程 Linux x86_64 主机完整通过。
 
