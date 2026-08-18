@@ -38,14 +38,16 @@
 - ET 读循环持续到 `EAGAIN`。callback 只能消费当前可见前缀，未消费数据保留；非法长度、callback 错误/异常或超限会确定性关闭。
 - 同一连接的 `write/writev` 整体串行；遇到背压时等待 EPOLLOUT generation，close 同时唤醒等待者。当前没有 deadline。
 - FD syscall 与 close 由独立 mutex 互斥，避免 descriptor 关闭/复用竞态；atomic closed 保证 shutdown、注销和 `on_close` 至多一次。
+- eventfd 的 read/write 重试 `EINTR` 并显式消费返回值，兼容启用 fortify 与 `-Werror` 的 GCC Release 构建。
 - callback 按连接串行；`on_data` 内允许 `close()`，其 `on_close` 延迟到当前 callback 返回。不得从 dispatcher worker callback 内调用 `stop()`，该调用返回 `invalid_state`。
 - `on_data` 通常运行于 worker；主动 close 的 `on_close` 可运行于调用线程，dispatcher shutdown 的 `on_close` 运行于 stop 调用线程，因此 callback 不应依赖固定线程亲和性。
 
 ## Evidence
 
 - 完整接口：`src/transport/epoll_dispatcher.hpp:16-139`。
-- 读写、回调与关闭：`src/transport/epoll_dispatcher.cpp:71-345`。
-- 注册、事件循环和停止：`src/transport/epoll_dispatcher.cpp:347-578`。
+- eventfd helper：`src/transport/epoll_dispatcher.cpp:59-82`。
+- 读写、回调与关闭：`src/transport/epoll_dispatcher.cpp:87-361`。
+- 注册、事件循环和停止：`src/transport/epoll_dispatcher.cpp:363-595`。
 - 自动测试：`tests/epoll_dispatcher_test.cpp:1-351`；远端 Linux GCC 8.5 Debug/ASan 11/11，专项连续 100 次通过。
 
 ## Links

@@ -64,6 +64,22 @@ void close_descriptor(int& fd) noexcept {
         static_cast<void>(::close(owned));
     }
 }
+
+void consume_wake(int fd) noexcept {
+    std::uint64_t value = 0;
+    ssize_t result = -1;
+    do {
+        result = ::read(fd, &value, sizeof(value));
+    } while (result < 0 && errno == EINTR);
+}
+
+void signal_wake(int fd) noexcept {
+    const std::uint64_t value = 1;
+    ssize_t result = -1;
+    do {
+        result = ::write(fd, &value, sizeof(value));
+    } while (result < 0 && errno == EINTR);
+}
 #endif
 
 }  // namespace
@@ -419,8 +435,7 @@ void EpollState::run() noexcept {
         for (int index = 0; index < count; ++index) {
             const auto fd = events[static_cast<std::size_t>(index)].data.fd;
             if (fd == wake_fd) {
-                std::uint64_t value = 0;
-                static_cast<void>(::read(wake_fd, &value, sizeof(value)));
+                consume_wake(wake_fd);
                 continue;
             }
             std::shared_ptr<EventConnection> connection;
@@ -449,8 +464,7 @@ TransportError EpollState::stop() noexcept {
     }
 #ifdef __linux__
     if (wake_fd >= 0) {
-        const std::uint64_t value = 1;
-        static_cast<void>(::write(wake_fd, &value, sizeof(value)));
+        signal_wake(wake_fd);
     }
     if (worker.joinable()) {
         worker.join();

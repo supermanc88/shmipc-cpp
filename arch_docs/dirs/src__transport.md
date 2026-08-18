@@ -24,13 +24,14 @@
 - 读事件必须排空到 `EAGAIN`；callback 返回消费前缀长度，未消费尾部保留到下一次事件。缓冲超过配置上限或 callback 违反消费契约时关闭连接。
 - 每条连接的 `write/writev` 由 mutex 串行化；`EAGAIN` 等待 `EPOLLOUT` generation，close 会唤醒所有等待写，避免帧交错和永久阻塞。
 - `on_close` 每条连接至多一次；`on_data` 内可重入 `close()`，通知延迟到当前 data callback 返回。dispatcher callback 线程不得同步 stop 自身。
+- eventfd 唤醒读写显式检查 syscall 结果并重试 `EINTR`；nonblocking `EAGAIN` 表示已有唤醒计数或计数已被消费，不影响 stop 条件。
 
 ## Evidence
 
 - Go blocking IO：`third_party/shmipc-go/block_io.go:25-54`。
 - Go 从 duplicated FD 切换 dispatcher：`third_party/shmipc-go/session.go:121-177`、`event_dispatcher_linux.go:247-263`。
 - C++ ownership/exact IO 与建连：`src/transport/control_socket.cpp:18-405`。
-- C++ event connection、epoll loop 与启动/停止：`src/transport/epoll_dispatcher.cpp:71-578`。
+- C++ event connection、epoll loop 与启动/停止：`src/transport/epoll_dispatcher.cpp:68-595`。
 - `tests/control_socket_test.cpp:18-173` 覆盖 partial read、EOF、would-block、TCP、Unix、重复 bind、路径清理和错误；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 10/10 通过。
 - `tests/epoll_dispatcher_test.cpp:1-351` 覆盖 partial frame、writev、EAGAIN 背压、并发写无交错、remote/local/shutdown close、缓冲上限、callback 错误/重入 close 和非法配置；远端 GCC 8.5 Debug/ASan 各 11/11，专项连续 100 次通过。
 

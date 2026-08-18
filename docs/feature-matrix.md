@@ -25,14 +25,14 @@
 | MPSC queue 与 working flag | 已验证 | 线程/进程压力、唤醒竞争、双向 Go↔C++ 1,000 elements、run `32131088262` | 持续回归 |
 | BufferWriter/Reader 与 pin/release | 已验证 | 单片 borrowed、跨片 owned copy、RAII、Go oracle、run `32134325132` | 持续回归 |
 | Unix/TCP control socket 与 exact IO | 已验证 | partial/EOF/would-block、真实 TCP/Unix、三套本机配置、远端 GCC/ASan | 持续回归 |
-| Linux epoll control dispatcher | 部分完成 | ET 可消费读缓冲、写背压/串行、关闭语义；远端 GCC/ASan 11/11、专项 100 次 | 推送并通过云端 Linux TSan |
+| Linux epoll control dispatcher | 部分完成 | ET 可消费读缓冲、写背压/串行、关闭语义；远端 GCC Debug/Release/ASan 11/11、专项 100 次 | 推送 GCC Release 修复并通过完整 CI |
 
 ## 产品需求
 
 | Requirement IDs | 能力 | 状态 | 首个实现切片 |
 |---|---|---|---|
 | `COMP-001` | Go↔C++ v2 双向互通 | 基线锁定 | M3 |
-| `S-0301` | Unix/TCP control transport 与 epoll | 实现及本机/远端 Linux Debug/ASan 已验证；待云端 TSan | M3 |
+| `S-0301` | Unix/TCP control transport 与 epoll | 实现及本机/远端 Linux Debug/Release/ASan 已验证；待修复提交完整 CI | M3 |
 | `COMP-002` | Go↔C++ v3 双向互通 | 基线锁定 | M4 |
 | `PROTO-001` | 控制头、事件、metadata 与 fallback 编解码 | 已验证 | `S-0101` |
 | `PROTO-002` | v2/v3 初始化状态机 | 未开始 | `S-0401` |

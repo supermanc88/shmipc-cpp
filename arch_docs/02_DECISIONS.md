@@ -160,7 +160,7 @@
 - Unix 路径：listener 不删除未知已有路径，只有成功 bind 后才拥有 unlink 责任，防止错误配置覆盖用户文件。
 - 事件模型：Linux 使用 `EPOLLET` 并读到 `EAGAIN`；callback 消费缓冲前缀，未消费尾部跨事件保留并受上限保护。每连接整体串行 `write/writev`，EAGAIN 等待 EPOLLOUT generation，close 使所有等待者退出。
 - 生命周期：FD syscall 与 close 互斥；连接终态只发布一次。callback 按连接串行，允许 `on_data` 内 close，但 `stop` 不允许由 worker callback 同步调用。callback 不保证固定线程亲和性。
-- 证据：`third_party/shmipc-go/block_io.go:25-54`、`session.go:121-177`、`event_dispatcher_linux.go:247-263`、`src/transport/control_socket.cpp:18-405`、`src/transport/epoll_dispatcher.cpp:71-578`、`tests/control_socket_test.cpp:18-173`、`tests/epoll_dispatcher_test.cpp:1-351`；远端 GCC 8.5 Debug/ASan 11/11，epoll 专项连续 100 次通过。
+- 证据：`third_party/shmipc-go/block_io.go:25-54`、`session.go:121-177`、`event_dispatcher_linux.go:247-263`、`src/transport/control_socket.cpp:18-405`、`src/transport/epoll_dispatcher.cpp:68-595`、`tests/control_socket_test.cpp:18-173`、`tests/epoll_dispatcher_test.cpp:1-351`；远端 GCC 8.5 Debug/Release/ASan 11/11，epoll 专项连续 100 次通过。
 
 ### D-004：v2 和 v3 是两个必须分别验收的握手路径
 
@@ -238,3 +238,4 @@
 - 2026-08-18：提交 `c1c23f9` 的 GitHub Actions run `32134325132` 七项作业全部成功，包含 GCC/Clang Debug/Release、Linux ASan+UBSan、TSan 与生产 BufferWriter/Reader 双向 Go oracle；`S-0205` 与 M2 退出门禁关闭。影响文档：索引、概要、本文件、root/shm/oracle 目录、buffer IO 文件、项目计划、工作流和功能矩阵。
 - 2026-08-18：M3 `S-0301` 首个子切片新增 move-only Unix/TCP control socket/listener、exact blocking IO、partial/EOF/would-block 分类及 Unix 路径所有权；本机三套配置与远端 GCC 8.5 Debug/ASan 通过。证据：`src/transport/control_socket.*`、`tests/control_socket_test.cpp`；影响文档：索引、概要、本文件、root/transport 目录、control socket 文件、关系图、计划、回归指南和功能矩阵。
 - 2026-08-18：`S-0301` 新增 Linux edge-triggered epoll dispatcher、消费式读缓冲、串行并发写、EPOLLOUT 背压、eventfd 停止及唯一关闭通知；远端 GCC 8.5 Debug/ASan 11/11、专项 100 次通过，等待云端 Linux TSan。证据：`src/transport/epoll_dispatcher.*`、`tests/epoll_dispatcher_test.cpp`；影响文档：索引、概要、本文件、root/transport 目录、epoll 文件、关系图、计划、回归指南和功能矩阵。
+- 2026-08-18：提交 `be2a5b6` 的 run `32139049571` 中六项门禁成功，GCC 13 Release 因 fortify 要求处理 eventfd syscall 返回值而编译失败；新增 `consume_wake/signal_wake` 显式处理返回值并重试 `EINTR`，本机 Release/TSan 与远端 GCC 8.5 Debug/Release/ASan 复验通过，等待修复提交的云端门禁。证据：`src/transport/epoll_dispatcher.cpp:68-82`；影响文档：本文件、root/transport 目录和 epoll 文件。
