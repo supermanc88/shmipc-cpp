@@ -24,7 +24,7 @@ can enable `SHMIPC_ENABLE_ASAN`, `SHMIPC_ENABLE_UBSAN`, or
 `SHMIPC_ENABLE_TSAN`; AddressSanitizer and ThreadSanitizer are intentionally
 mutually exclusive.
 
-To validate the control-header golden against the pinned Go implementation:
+To validate the control-protocol golden fixtures against the pinned Go implementation:
 
 ```bash
 go run tools/go_oracle/run_control_header_oracle.go

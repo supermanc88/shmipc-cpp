@@ -89,7 +89,7 @@ jobs:
         run: ${{ matrix.runtime_options }} ctest --test-dir build/sanitizer --output-on-failure
 
   go-oracle:
-    name: Go control-header oracle
+    name: Go protocol oracle
     runs-on: ubuntu-24.04
     steps:
       - name: Check out source

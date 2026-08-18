@@ -13,7 +13,7 @@ import (
 const expectedCommit = "55c241eea321071278d1ee7f7c46292d23e50a5b"
 
 func fail(err error) {
-	fmt.Fprintln(os.Stderr, "go control-header oracle:", err)
+	fmt.Fprintln(os.Stderr, "go control-protocol oracle:", err)
 	os.Exit(1)
 }
 
@@ -59,9 +59,11 @@ func main() {
 		fail(err)
 	}
 
-	command := exec.Command("go", "test", "-overlay", overlayPath, "-run", "^TestControlHeaderGolden$", "-count=1", ".")
+	command := exec.Command("go", "test", "-overlay", overlayPath, "-run", "^Test(ControlHeader|SharedMemoryMetadata|FallbackData)Golden$", "-count=1", ".")
 	command.Dir = goReference
 	command.Env = append(os.Environ(), "SHMIPC_CONTROL_HEADER_GOLDEN="+filepath.Join(root, "tests", "data", "golden", "control_headers.txt"))
+	command.Env = append(command.Env, "SHMIPC_SHM_METADATA_GOLDEN="+filepath.Join(root, "tests", "data", "golden", "shm_metadata.txt"))
+	command.Env = append(command.Env, "SHMIPC_FALLBACK_GOLDEN="+filepath.Join(root, "tests", "data", "golden", "fallback_data.txt"))
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	if err := command.Run(); err != nil {

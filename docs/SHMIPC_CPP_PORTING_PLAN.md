@@ -6,7 +6,7 @@
 |---|---|
 | 项目类型 | Go 到 C++ 的跨语言、跨运行时重实现 |
 | 参考实现 | `third_party/shmipc-go` commit `55c241eea321071278d1ee7f7c46292d23e50a5b` |
-| 当前阶段 | M0 已完成并通过本机、远端及 GitHub Actions 验证；下一步进入 M1 `S-0101` 控制协议生产实现 |
+| 当前阶段 | M1 `S-0101` 的控制协议生产 codec 已通过本机与远端门禁，待 push 后补 GitHub Actions 独立证据 |
 | 已确认目标 | 在 Linux 上提供现代 C++ 共享内存 IPC 库，并与固定 Go 实现双向互通；Go 仅用于开发验收 |
 | 流程依据 | 用户提供的《软件项目端到端标准工作流程》 |
 | 架构依据 | [上游架构概要](../arch_docs/01_OVERVIEW.md) 与 [决策/风险](../arch_docs/02_DECISIONS.md) |
@@ -156,7 +156,7 @@ tools/
 
 切片：
 
-- `S-0101`：控制 header、事件枚举、metadata 和 fallback 编解码。
+- `S-0101`（本地与远端已验证，待云端）：控制 header、事件枚举、metadata 和 fallback 编解码。
 - `S-0102`：queue header/element 的 amd64 与 arm64 显式布局访问器。
 - `S-0103`：buffer manager/list/slice layout probe，专项验证 counter `+20/+24` 差异。
 - `S-0104`：损坏输入 corpus：截断、超长、溢出、非法 offset 和循环链。
@@ -291,11 +291,12 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-M0-002`：用户安装 `libasan-8.5.0` 后，远端独立 ASan 构建和 CTest 通过；UBSan/TSan 仍因缺失对应 `/usr/lib64` runtime 而阻塞。
 - `E-M0-003`：提交 `eeae84e` 的 GitHub Actions run [`32116398237`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32116398237) 总结论 success；GCC/Clang × Debug/Release、ASan+UBSan、TSan 六项均执行并通过，常规四项安装验证通过。
 - `E-M0-004`：固定 commit runner 与 overlay oracle 在本机通过；10 类 control-header golden（SHA-256 `ee6379a976c47c4d81c894ecf110132884ee8e48086091338cb17a8d8765fdfa`）被 Go `header.encode` 和 C++ test 共同验证，远端 GCC 8.5 Debug/ASan 两项 C++ 测试通过；提交 `34ef510` 的 GitHub Actions run [`32119710781`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32119710781) 中 Go oracle 与完整七项矩阵全部成功。
+- `E-M1-001`：生产 codec 覆盖 8 字节 header、事件 0..9、v2/v3 metadata 与 fallback；三份 golden 同时由固定 Go 编码器和 C++ round-trip 使用，并覆盖截断、非法字段、错误事件、尾随字节和帧上限。macOS AppleClang Debug/ASan+UBSan 与远端 Linux GCC 8.5 Debug/ASan 均通过；云端证据待本地提交 push 后补录。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. 进入 M1 `S-0101`：实现控制 header、事件枚举、metadata 和 fallback 编解码。
-2. 复用 `E-M0-004` golden，加入正常与截断/非法字段测试。
-3. 不跨越 M1 的 counter offset 决策门进入共享布局实现。
+1. 提交并 push `S-0101`，确认 GitHub Actions 七项矩阵全部通过后将其标记完成。
+2. 进入 `S-0102`：实现 queue header/element 的 amd64 与 arm64 显式布局访问器。
+3. 不跨越 `S-0103` 的 counter offset 决策门进入 buffer 共享布局实现。

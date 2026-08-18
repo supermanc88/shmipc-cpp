@@ -1,6 +1,6 @@
 # 架构关系图
 
-## 当前 C++ 骨架依赖
+## 当前 C++ 依赖与协议验证
 
 ```mermaid
 graph TD
@@ -11,9 +11,10 @@ graph TD
   package["shmipcConfig.cmake / shmipcTargets.cmake"]
   ci[".github/workflows/ci.yml"]
   runner["tools/go_oracle runner"]
-  upstream["third_party/shmipc-go header.encode"]
-  golden["tests/data/golden/control_headers.txt"]
-  golden_test["C++ golden test"]
+  upstream["third_party/shmipc-go encoders"]
+  golden["header / metadata / fallback fixtures"]
+  codec["src/protocol/control_codec"]
+  golden_test["C++ codec tests"]
 
   consumer -- includes --> public
   consumer -- links --> library
@@ -23,7 +24,10 @@ graph TD
   ci -- configures/builds/tests/installs --> library
   runner -- overlays/calls --> upstream
   upstream -- verifies --> golden
+  codec -- encodes/decodes --> golden
+  golden_test -- calls --> codec
   golden_test -- reads/verifies --> golden
+  library -- contains --> codec
   ci -- runs --> runner
 ```
 

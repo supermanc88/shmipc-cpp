@@ -98,7 +98,7 @@ Sanitizer 使用独立构建目录，不能混用编译产物：`build/asan`、`
 
 - 常规矩阵：Ubuntu 24.04，GCC/Clang × Debug/Release，执行配置、编译、CTest 和安装。
 - Sanitizer 矩阵：GCC Debug，分别执行 ASan+UBSan 和 TSan。
-- Go oracle：Go 1.25.10，校验固定 submodule commit 并运行 control-header golden test。
+- Go oracle：Go 1.25.10，校验固定 submodule commit，并运行 header、metadata 与 fallback golden test。
 - checkout 使用只读仓库权限、禁用凭据持久化，并递归拉取固定 Go submodule。
 
 远程主机用于开发中快速复核，GitHub Actions 用于独立环境门禁；两者结果分别记录，不相互冒充。2026-08-18 首轮 GitHub Actions run `32116398237` 的六个矩阵作业全部通过，建立了 `S-0002` 云端基线。
@@ -115,13 +115,13 @@ Go 与 C++ 双向互操作已确认为项目正确性验证目标，但 Go 不�
 - commit：`55c241eea321071278d1ee7f7c46292d23e50a5b`
 - 所有 fixture、对端二进制和报告必须记录该 commit。
 
-control-header oracle 的标准入口：
+control-protocol oracle 的标准入口：
 
 ```bash
 go run tools/go_oracle/run_control_header_oracle.go
 ```
 
-该 runner 使用临时 Go overlay 访问上游 package 内部的 `header.encode`，不修改 submodule；commit 不匹配、事件集合变化或任一字节变化都会失败。详细回归命令见 [regression-test-guide.md](regression-test-guide.md)。
+该 runner 使用临时 Go overlay 访问上游 package 内部的 header、metadata 与 fallback 编码器，不修改 submodule；commit 不匹配、事件集合变化或任一字节变化都会失败。详细回归命令见 [regression-test-guide.md](regression-test-guide.md)。
 
 ### 当前 Go 工具链策略
 

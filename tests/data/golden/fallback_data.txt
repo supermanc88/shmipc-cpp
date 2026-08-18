@@ -1,0 +1,3 @@
+# Generated from cloudwego/shmipc-go commit 55c241eea321071278d1ee7f7c46292d23e50a5b.
+# version stream_id status payload_hex encoded_frame_hex
+3 270544960 2712847316 000102ff 000000147758030310203040a1b2c3d4000102ff

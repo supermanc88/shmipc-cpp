@@ -10,7 +10,7 @@ ctest --test-dir build/debug --output-on-failure
 git diff --check
 ```
 
-## Go control-header oracle
+## Go control-protocol oracle
 
 需要 Go 1.20+、Git 和已初始化的 submodule：
 
@@ -18,7 +18,7 @@ git diff --check
 go run tools/go_oracle/run_control_header_oracle.go
 ```
 
-运行器首先要求 `third_party/shmipc-go` HEAD 严格等于 `55c241eea321071278d1ee7f7c46292d23e50a5b`，然后通过临时 overlay 把 oracle test 注入上游 package。它不会修改 submodule 工作区。
+运行器首先要求 `third_party/shmipc-go` HEAD 严格等于 `55c241eea321071278d1ee7f7c46292d23e50a5b`，然后通过临时 overlay 把 oracle test 注入上游 package。它直接调用上游 header、共享内存 metadata 和 fallback 编码器，不会修改 submodule 工作区。
 
 也可通过 CTest 运行完整本机集合：
 
@@ -51,8 +51,13 @@ ssh 23.2 '
 ## 结果判定
 
 - `shmipc.version`：公共头与链接库版本一致。
-- `shmipc.control_header_golden`：C++ 测试能完整消费 10 类控制事件 fixture，字段与大端字节一致。
-- `shmipc.go_control_header_oracle`：固定 Go 上游的真实 `header.encode` 与同一 fixture 逐字节一致。
+- `shmipc.control_header_golden`：生产 codec 完整消费 10 类控制事件 fixture，字段与大端字节一致。
+- `shmipc.protocol_codec`：metadata/fallback 正反向 golden 一致，并拒绝截断、尾随字节、非法 magic/version/type、错误 payload 事件、超长字段和超过配置上限的帧。
+- `shmipc.go_protocol_oracle`：固定 Go 上游的真实 header、metadata 与 fallback 编码器和同一 fixture 逐字节一致。
 - 任一 commit mismatch、缺行、重复/错序事件或字节差异均为失败，不允许自动更新 golden 后绕过评审。
 
-当前 `tests/data/golden/control_headers.txt` 的 SHA-256 为 `ee6379a976c47c4d81c894ecf110132884ee8e48086091338cb17a8d8765fdfa`。
+当前 golden 的 SHA-256：
+
+- `control_headers.txt`：`ee6379a976c47c4d81c894ecf110132884ee8e48086091338cb17a8d8765fdfa`
+- `shm_metadata.txt`：`5e5e66b2563feb9d0b96f4c5cdb5922cd72e87b6bbfec4b49965e7b1bc5f1fba`
+- `fallback_data.txt`：`ce97f80676a92066b62b0127d0ae5561ed7be2bc8035c88c98fc79db82b77f94`

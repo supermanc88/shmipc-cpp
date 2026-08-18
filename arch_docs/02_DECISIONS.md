@@ -62,6 +62,15 @@
 - 边界：需要用户参与设备、交互或主观判断的测试仍须等待；`git push`、发布、PR 等远程写操作不包含在该授权内。
 - 工作流：具体门禁见 `docs/PROJECT_WORKFLOW.md` 的“单切片执行闭环”。
 
+### D-010：控制协议采用显式字段访问、结构化错误与有限帧长
+
+- 状态：`S-0101` 本机与远端已验证，待云端独立证据
+- 决策：所有线上整数显式按大端读写，不用 packed struct 或 reinterpret；decoder 返回 `CodecError` 分类，并要求 metadata/fallback 输入精确等于一帧。
+- 安全边界：默认最大帧长为 64 MiB，调用方可在 decode 时收紧；metadata 单个 path 受 uint16 上限约束。
+- 兼容细节：metadata 按 queue path、buffer path 顺序；fallback 同时保留 32 位 raw status，并暴露 Go 接收路径使用的低 8 位 stream state。
+- API 边界：当前头文件位于 `src/protocol/`，只作为内部接口，不随 install 导出；公共错误/API 模型另行决策。
+- 证据：`src/protocol/control_codec.hpp:10-96`、`src/protocol/control_codec.cpp:110-275`、`tests/protocol_codec_test.cpp:46-199`。
+
 ### D-004：v2 和 v3 是两个必须分别验收的握手路径
 
 - 状态：已验证
@@ -96,7 +105,8 @@
 ### R-005：异常输入边界检查需要加固
 
 - 事实：控制 header 有 magic/version/type 检查，但共享内存 metadata 和部分链式 offset 读取依赖对端可信；`extractShmMetadata` 未完整验证 body 边界。
-- 对策：C++ 接收端对 length、offset、加法溢出、循环链、最大 slice 数和文件大小做显式检查；兼容正常输入，不继承不安全行为。
+- 当前缓解：`S-0101` 已对控制帧 length、magic、version、event、body 截断、尾随字节、metadata 字段长度和 64 MiB 默认上限做显式检查。
+- 剩余对策：共享内存 offset、加法溢出、循环链、最大 slice 数和文件大小仍须在 `S-0102..0104` 加固；兼容正常输入，不继承不安全行为。
 
 ### R-006：远端时钟漂移与部分 sanitizer 运行库缺失
 
@@ -121,3 +131,4 @@
 - 2026-08-18：新增固定 Go commit 检查、overlay oracle、10 类 control-header golden 和 C++ fixture 消费测试；本机 oracle/C++ 测试与远端 GCC 8.5/ASan 通过。证据：`tools/go_oracle/`、`tests/data/golden/control_headers.txt`、`tests/control_header_golden_test.cpp`；影响文档：索引、概要、根目录、关系图、项目计划/工作流及新增回归指南/ADR/功能矩阵。
 - 2026-08-18：用户授权自动化可完整验收的切片在自测通过后直接创建本地 commit，同时保留人工测试与远程写操作的授权边界。影响文档：本文件、项目工作流和移植计划。
 - 2026-08-18：提交 `34ef510` 的 GitHub Actions run `32119710781` 完整成功；Go 1.25.10 oracle 的 setup/configure/build/test 与其余六项矩阵全部通过，`S-0003` 和 M0 转为已验证。影响文档：索引、概要、本文件、根目录、oracle 目录、项目工作流、移植计划和功能矩阵。
+- 2026-08-18：新增 `S-0101` 生产 control codec，覆盖 header、事件 0..9、v2/v3 metadata 与 fallback；固定 Go 编码器和 C++ round-trip 共用三份 golden，异常输入测试覆盖截断、非法字段、错误事件、尾随字节与帧上限。本机 AppleClang Debug/ASan+UBSan 及远端 GCC 8.5 Debug/ASan 通过。证据：`src/protocol/control_codec.*`、`tests/protocol_codec_test.cpp`、`tools/go_oracle/control_header_oracle_test.gotxt:13-192`；影响文档：索引、概要、本文件、root/protocol/oracle 目录、关系图、计划、工作流、回归指南和功能矩阵。

@@ -1,35 +1,16 @@
-#include <array>
+#include "protocol/control_codec.hpp"
+
 #include <cstdint>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace {
 
-constexpr std::uint16_t magic = 0x7758;
-constexpr std::size_t header_size = 8;
-constexpr std::array<const char*, 10> event_names{
-    "ShareMemoryByFilePath", "Polling",          "StreamClose",
-    "FallbackData",          "ExchangeProtoVersion",
-    "ShareMemoryByMemfd",    "AckShareMemory",  "AckReadyRecvFD",
-    "HotRestart",            "HotRestartAck",
-};
-
-std::string encode_header(std::uint32_t length, std::uint8_t version,
-                          std::uint8_t type) {
-    const std::array<std::uint8_t, header_size> bytes{
-        static_cast<std::uint8_t>((length >> 24U) & 0xffU),
-        static_cast<std::uint8_t>((length >> 16U) & 0xffU),
-        static_cast<std::uint8_t>((length >> 8U) & 0xffU),
-        static_cast<std::uint8_t>(length & 0xffU),
-        static_cast<std::uint8_t>((magic >> 8U) & 0xffU),
-        static_cast<std::uint8_t>(magic & 0xffU),
-        version,
-        type,
-    };
-
+std::string encode_hex(const std::vector<std::uint8_t>& bytes) {
     std::ostringstream encoded;
     encoded << std::hex << std::setfill('0');
     for (const auto byte : bytes) {
@@ -62,29 +43,36 @@ int main() {
         std::string trailing;
         std::istringstream fields(line);
         if (!(fields >> name >> length >> version >> type >> expected) ||
-            (fields >> trailing)) {
+            (fields >> trailing) || version > 0xffU || type > 0xffU) {
             std::cerr << "invalid golden row: " << line << '\n';
             return 1;
         }
-        if (row >= event_names.size() || name != event_names[row] || type != row ||
-            version > 0xffU || type > 0xffU) {
-            std::cerr << "unexpected event metadata: " << line << '\n';
+
+        const shmipc::protocol::Header header{
+            length,
+            static_cast<std::uint8_t>(version),
+            static_cast<shmipc::protocol::EventType>(type),
+        };
+        const auto encoded = shmipc::protocol::encode_header(header);
+        if (!encoded || encode_hex(encoded.value) != expected ||
+            std::string(shmipc::protocol::to_string(header.type)) != name) {
+            std::cerr << "header mismatch for " << name << '\n';
             return 1;
         }
 
-        const auto actual = encode_header(length, static_cast<std::uint8_t>(version),
-                                          static_cast<std::uint8_t>(type));
-        if (actual != expected) {
-            std::cerr << "header mismatch for " << name << ": expected " << expected
-                      << ", got " << actual << '\n';
+        const auto decoded = shmipc::protocol::decode_header(
+            encoded.value.data(), encoded.value.size(), length);
+        if (!decoded || decoded.value.length != length ||
+            decoded.value.version != version ||
+            static_cast<unsigned int>(decoded.value.type) != type) {
+            std::cerr << "header decode mismatch for " << name << '\n';
             return 1;
         }
         ++row;
     }
 
-    if (row != event_names.size()) {
-        std::cerr << "expected " << event_names.size() << " event rows, got " << row
-                  << '\n';
+    if (row != 10U) {
+        std::cerr << "expected 10 event rows, got " << row << '\n';
         return 1;
     }
     return 0;

@@ -20,7 +20,11 @@ option(SHMIPC_ENABLE_GO_ORACLE_TESTS "Enable tests against the fixed Go referenc
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(ShmipcProjectOptions)
 
-add_library(shmipc src/version.cpp)
+add_library(
+    shmipc
+    src/protocol/control_codec.cpp
+    src/version.cpp
+)
 add_library(shmipc::shmipc ALIAS shmipc)
 
 target_compile_features(shmipc PUBLIC cxx_std_17)
@@ -29,6 +33,8 @@ target_include_directories(
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 set_target_properties(
     shmipc

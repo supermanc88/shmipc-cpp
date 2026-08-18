@@ -115,8 +115,9 @@
 - Go 参考实现构建入口：`go.mod`，Go 1.20。
 - C++ 构建入口：根目录 `CMakeLists.txt`，最低 CMake 3.16、C++17；产物 target 为 `shmipc`/`shmipc::shmipc`，支持 CTest、install/export 及 `find_package(shmipc)` package 配置。
 - C++ 质量入口：`SHMIPC_WARNINGS_AS_ERRORS`、`SHMIPC_ENABLE_ASAN`、`SHMIPC_ENABLE_UBSAN`、`SHMIPC_ENABLE_TSAN`；ASan 与 TSan 在配置阶段互斥。
-- Go oracle 入口：`go run tools/go_oracle/run_control_header_oracle.go`；严格校验 submodule commit 后，以 overlay 调用上游 `header.encode` 核对 10 类事件控制头。CMake 可通过 `SHMIPC_ENABLE_GO_ORACLE_TESTS=ON` 将其加入 CTest。
-- C++ CI 入口：`.github/workflows/ci.yml`。Ubuntu 24.04 上运行 GCC/Clang × Debug/Release 四项构建、CTest 和安装；另以 GCC 分别运行 ASan+UBSan 与 TSan，并以 Go 1.25.10 运行 control-header oracle。
+- C++ 控制协议入口：`src/protocol/control_codec.hpp`。当前提供 header、事件 0..9、v2/v3 metadata 与 fallback 的大端编解码；以明确错误分类拒绝截断、非法字段、错误事件、尾随字节和超过默认 64 MiB 上限的帧。该接口暂为内部 API。
+- Go oracle 入口：`go run tools/go_oracle/run_control_header_oracle.go`；严格校验 submodule commit 后，以 overlay 调用上游 header、metadata 与 fallback 编码器核对三份 golden。CMake 可通过 `SHMIPC_ENABLE_GO_ORACLE_TESTS=ON` 将其加入 CTest。
+- C++ CI 入口：`.github/workflows/ci.yml`。Ubuntu 24.04 上运行 GCC/Clang × Debug/Release 四项构建、CTest 和安装；另以 GCC 分别运行 ASan+UBSan 与 TSan，并以 Go 1.25.10 运行 control-protocol oracle。
 - 本地测试：`go test ./...`；上游测试实际依赖 Linux，macOS 不构成有效通过环境。
 - Linux 交叉编译基线：`GOOS=linux GOARCH=amd64 go test -c .` 已在 2026-08-18 成功。
 - 远程执行环境：SSH 别名 `23.2`（`root@10.210.23.2`），工作目录 `/home/chm/shmipc-cpp`；Kylin Linux Advanced Server V10、kernel `4.19.90-20.0stable.x86_64`、x86_64。
@@ -124,6 +125,7 @@
 - C++ 骨架验证：macOS/AppleClang 的 Debug、测试、安装和 ASan+UBSan 通过；远端 Linux/GCC 8.5 的 Debug、测试、`lib64` 安装及独立 ASan 构建/测试通过。远端尚缺 `libubsan` 与 `libtsan`，因此 UBSan/TSan 仍属环境阻塞。
 - CI 云端验证：提交 `eeae84e` 的首轮 GitHub Actions（run `32116398237`）成功；GCC/Clang × Debug/Release、ASan+UBSan、TSan 六个作业均实际执行并通过，常规四项的安装验证也通过。
 - Go oracle 云端验证：提交 `34ef510` 的 GitHub Actions run [`32119710781`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32119710781) 成功；新增 Go 1.25.10 作业及原有六项矩阵共七项全部通过。
+- `S-0101` 验证：三份 fixture 同时经固定 Go 编码器与 C++ production codec 验证；macOS AppleClang Debug/ASan+UBSan 与远端 GCC 8.5 Debug/ASan 通过，GitHub Actions 证据待 push 后补录。
 - 时钟注意：本机当前比远端快约 2 分 20 秒；同步时不得保留本机文件时间戳，否则 Ninja 会反复重新生成。标准命令见 `PROJECT_WORKFLOW.md`。
 - Linux 运行基线：本机用 Go 1.25.10 交叉编译固定提交的 amd64 测试二进制，rsync 至远端后完整测试 `PASS`、退出码 0；覆盖 v2、v3/memfd、队列、Stream/Session 和热重启路径。
 - CI：`.github/workflows/tests.yaml` 在 Ubuntu 运行单测/benchmark，并在自托管 Linux 上覆盖 Go 1.21–1.25；`.github/workflows/pre_check.yaml` 运行许可证、拼写和 golangci-lint。
