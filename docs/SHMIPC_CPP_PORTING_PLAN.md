@@ -6,7 +6,7 @@
 |---|---|
 | 项目类型 | Go 到 C++ 的跨语言、跨运行时重实现 |
 | 参考实现 | `third_party/shmipc-go` commit `55c241eea321071278d1ee7f7c46292d23e50a5b` |
-| 当前阶段 | M1 已完成；M2 `S-0201..0203` 已由 run `32129419428` 完整验收，正在执行 `S-0204` |
+| 当前阶段 | M1 已完成；M2 `S-0201..0204` 已由 run `32131088262` 完整验收，正在执行 `S-0205` |
 | 已确认目标 | 在 Linux 上提供现代 C++ 共享内存 IPC 库，并与固定 Go 实现双向互通；Go 仅用于开发验收 |
 | 流程依据 | 用户提供的《软件项目端到端标准工作流程》 |
 | 架构依据 | [上游架构概要](../arch_docs/01_OVERVIEW.md) 与 [决策/风险](../arch_docs/02_DECISIONS.md) |
@@ -172,7 +172,7 @@ tools/
 - `S-0201`（已验证）：move-only RAII mmap/memfd/file mapping，显式区分 FD 借用/转移及文件创建者/mapper 清理责任。
 - `S-0202`（已验证）：分级 buffer list 单进程分配回收；保留 sentinel、耗尽向大档位回退、角色 token/counter 和损坏 header 防护。
 - `S-0203`（已验证）：lock-free seq_cst 双进程分配回收，以及 C++→Go、Go→C++ 链式 slice publish/adopt；run `32129419428` 七项作业全部成功。
-- `S-0204`（本地、远端与双向 oracle 已验证，待云端）：MPSC queue、working flag 和批量消费；保留 amd64 非自然对齐与 arm64 自然对齐布局。
+- `S-0204`（已验证）：MPSC queue、working flag 和批量消费；保留 amd64 非自然对齐与 arm64 自然对齐布局；run `32131088262` 七项作业全部成功。
 - `S-0205`：BufferWriter/Reader、pin/release、跨 slice 慢路径。
 
 退出条件：`SHM-*`、`QUEUE-*` 的自动测试通过；压力测试计数守恒；ASan/UBSan/TSan 规定集合通过。
@@ -304,11 +304,12 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-M2-003`：32 位 always-lock-free seq_cst free-list 通过本机 20 轮、远端 10 轮父子进程压力及 AppleClang TSan；双向 Go oracle 以 20,000 字节链验证 C++ publish→Go adopt/recycle 和 Go publish→C++ adopt/recycle，最终 free-list 与角色净 counters 恢复。
 - `E-M2-004`：提交 `281d024` 的 GitHub Actions run [`32129419428`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32129419428) 中 GCC/Clang Debug/Release、ASan+UBSan、TSan 与 Go 双向 oracle 七项作业全部成功。
 - `E-M2-005`：MPSC queue 以 4 producer/单 consumer 传递 20,000 elements，父子进程在 256 slots 上环绕 20,000 次，working 清零竞争重复 1,000 次；Go↔C++ 两方向各传 1,000 elements 并验证 working flag。本机 arm64 与 Rosetta x86_64 ASan+UBSan、本机 TSan、远端 GCC 8.5 Debug/ASan 与额外 20 轮压力通过。
+- `E-M2-006`：提交 `4a0ef5c` 的 GitHub Actions run [`32131088262`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32131088262) 中 GCC/Clang Debug/Release、ASan+UBSan、TSan 与 Go queue oracle 七项作业全部成功。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. 创建 `S-0204` 本地提交并纳入下一批 push。
-2. push 后检查 GitHub Actions，重点确认 Linux TSan 与 Go queue oracle。
-3. 云端通过后进入 `S-0205` BufferWriter/Reader、pin/release 与跨 slice 慢路径。
+1. 实现 `S-0205` BufferWriter/Reader、pin/release 与跨 slice 慢路径。
+2. 补充零拷贝 view 生命周期、跨 slice 拷贝和异常边界测试。
+3. 本机、远端和 sanitizer 验证通过后提交并纳入下一批 push。

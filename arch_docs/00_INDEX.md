@@ -118,9 +118,9 @@
 
 ## 分析进度
 
-- 已完成：上游架构分析、M0、M1；M2 `S-0201..0203` 已由 run `32129419428` 完整验收，`S-0204` 已通过本机/远端与双向 oracle，待云端。
+- 已完成：上游架构分析、M0、M1；M2 `S-0201..0204` 已由 run `32131088262` 完整验收，当前进入 `S-0205`。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
-- 待验证：完整 Session 的 Go↔C++ 双向互操作。buffer pool 与 queue 的原子内存序、counter/working 语义和双向数据平面已验证，queue 待下一批云端证据。
+- 待验证：完整 Session 的 Go↔C++ 双向互操作，以及 BufferReader/Writer 的 pin/release 生命周期。buffer pool 与 queue 的原子内存序、counter/working 语义和双向数据平面已云端验证。
 
 ## 状态标记
 

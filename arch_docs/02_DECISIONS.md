@@ -135,7 +135,7 @@
 
 ### D-018：queue MPSC 使用本地 producer mutex 与共享 seq_cst 发布
 
-- 状态：`S-0204` 本机、远端与双向 Go oracle 已验证，待云端
+- 状态：已验证；提交 `4a0ef5c` 的 run `32131088262` 通过
 - 并发模型：与 Go 一致，每个方向由单个进程内的多个 producer 通过本地 mutex 串行写入，对端只有一个 consumer；不承诺多个进程同时生产同一方向。
 - 发布顺序：producer 在 mutex 内检查 `tail-head < capacity`，写完 12 字节 element 后 seq_cst 增加 tail；consumer 读取 element 后 seq_cst 增加 head。`pop_batch` 只是在单 consumer 上循环，不改变共享格式。
 - 架构：运行期只接受本机布局。arm64 使用自然对齐的 `+8/+16` head/tail；amd64 为 Go wire 兼容保留 `+4/+12` 非自然对齐 64 位原子，依赖目标 x86_64 的 always-lock-free builtin，并由远端 GCC 8.5 压力与 Rosetta x86_64 ASan+UBSan 验证。
@@ -213,3 +213,4 @@
 - 2026-08-18：`S-0203` 将 free-list 更新升级为 always-lock-free 32 位 seq_cst 原子，实现 chain allocate/publish/adopt/recycle，并以双向 Go↔C++ 20,000 字节链路验证。并发/互操作实验修正先前 counter 推断：字段是各角色本地 pop-push 净值，不是严格 outstanding 数量。证据：`src/shm/atomic_word.hpp`、`src/shm/buffer_pool.*`、`tests/buffer_pool_test.cpp`、`tests/buffer_pool_interop_helper.cpp`、Go oracle；影响文档：索引、概要、本文件、root/shm/oracle 目录、buffer pool/atomic 文件、关系图、计划、工作流、回归指南和功能矩阵。
 - 2026-08-18：提交 `281d024` 的 GitHub Actions run `32129419428` 七项作业全部成功，包含 Linux TSan、ASan+UBSan、GCC/Clang Debug/Release 与 Go 双向 chain oracle；`S-0201..0203` 云端门禁关闭。
 - 2026-08-18：`S-0204` 新增 `SharedQueue`，按上游“本地 producer mutex + 共享 seq_cst head/tail + 单 consumer”模型实现 MPSC、batch 与 working flag；4 producer 并发、父子进程环绕、1,000 轮唤醒竞争、双向 Go oracle 和远端 amd64 20 轮压力通过。证据：`src/shm/shared_queue.*`、`tests/shared_queue*`、Go oracle；影响文档：索引、概要、本文件、root/shm/oracle 目录、shared queue/atomic 文件、关系图、计划、工作流、回归指南和功能矩阵。
+- 2026-08-18：提交 `4a0ef5c` 的 GitHub Actions run `32131088262` 七项作业全部成功，包含 Linux TSan、ASan+UBSan 与 Go 双向 queue oracle；`S-0204` 云端门禁关闭。

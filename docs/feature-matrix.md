@@ -21,7 +21,7 @@
 | file/memfd RAII mapping | 已验证 | AppleClang、GCC 8.5、真实 memfd ownership、run `32129419428` | 持续回归 |
 | 单进程分级 buffer pool | 已验证 | 档位回退、角色 counter/token、损坏 header、run `32129419428` | 持续回归 |
 | 跨进程原子 buffer pool 与链式互操作 | 已验证 | 双进程压力、TSan、C++↔Go 双向 20,000 字节链、run `32129419428` | 持续回归 |
-| MPSC queue 与 working flag | 本地与远端已验证 | 线程/进程压力、唤醒竞争、双向 Go↔C++ 1,000 elements | 随下一批 push 补云端证据 |
+| MPSC queue 与 working flag | 已验证 | 线程/进程压力、唤醒竞争、双向 Go↔C++ 1,000 elements、run `32131088262` | 持续回归 |
 
 ## 产品需求
 
@@ -35,9 +35,9 @@
 | `SHM-002` | 分级 buffer 分配回收 | 单进程与双进程原子路径已云端验证 | `S-0202..0203` |
 | `SHM-003` | 链式 slice 与零拷贝生命周期 | 跨语言链式 publish/adopt/recycle 已云端验证；Reader/Writer pin 待实现 | `S-0203`/`S-0205` |
 | `SHM-004` | 损坏 offset/length 防护 | 9 类固定 corpus 与 run `32125329954` 已验证 | `S-0104` |
-| `QUEUE-001` | MPSC queue put/pop | 本机/远端及双向 oracle 已验证，待云端 | `S-0102`/`S-0204` |
-| `QUEUE-002` | working flag 与批量唤醒 | 1,000 轮竞争和双向 oracle 已验证，待云端 | `S-0204` |
-| `QUEUE-003` | amd64/arm64 原子对齐 | 两套 byte layout、arm64 本机与 amd64 远端原子路径已验证，待云端 | `S-0102`/`S-0204` |
+| `QUEUE-001` | MPSC queue put/pop | 已云端验证 | `S-0102`/`S-0204` |
+| `QUEUE-002` | working flag 与批量唤醒 | 已云端验证 | `S-0204` |
+| `QUEUE-003` | amd64/arm64 原子对齐 | 两套布局与两架构原子路径已云端验证 | `S-0102`/`S-0204` |
 | `STREAM-001..004` | 多路复用、读写、fallback、关闭 | 未开始 | M3/M4 |
 | `API-001` | RAII Session/Stream API | 未开始 | M3 |
 | `API-002..003` | Listener/SessionManager/异步 API | 未开始 | M5 |
