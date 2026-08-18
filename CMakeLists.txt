@@ -24,6 +24,7 @@ add_library(
     shmipc
     src/protocol/control_codec.cpp
     src/shm/buffer_layout.cpp
+    src/shm/buffer_pool.cpp
     src/shm/queue_layout.cpp
     src/shm/shared_memory_region.cpp
     src/version.cpp

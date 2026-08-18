@@ -6,7 +6,7 @@
 |---|---|
 | 项目类型 | Go 到 C++ 的跨语言、跨运行时重实现 |
 | 参考实现 | `third_party/shmipc-go` commit `55c241eea321071278d1ee7f7c46292d23e50a5b` |
-| 当前阶段 | M1 已由 run `32125329954` 完整验收；M2 `S-0201` 已通过本机与远端门禁，待批次云端证据 |
+| 当前阶段 | M1 已由 run `32125329954` 完整验收；M2 `S-0201..0202` 已通过本机与远端门禁，待批次云端证据 |
 | 已确认目标 | 在 Linux 上提供现代 C++ 共享内存 IPC 库，并与固定 Go 实现双向互通；Go 仅用于开发验收 |
 | 流程依据 | 用户提供的《软件项目端到端标准工作流程》 |
 | 架构依据 | [上游架构概要](../arch_docs/01_OVERVIEW.md) 与 [决策/风险](../arch_docs/02_DECISIONS.md) |
@@ -170,7 +170,7 @@ tools/
 切片：
 
 - `S-0201`（本地与远端已验证，待云端）：move-only RAII mmap/memfd/file mapping，显式区分 FD 借用/转移及文件创建者/mapper 清理责任。
-- `S-0202`：分级 buffer list 单进程分配回收。
+- `S-0202`（本地与远端已验证，待云端）：分级 buffer list 单进程分配回收；保留 sentinel、耗尽向大档位回退、角色 token/counter 和损坏 header 防护。
 - `S-0203`：双进程跨语言分配回收与链式 slice。
 - `S-0204`：MPSC queue、working flag 和批量消费。
 - `S-0205`：BufferWriter/Reader、pin/release、跨 slice 慢路径。
@@ -300,11 +300,12 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-M1-004`：固定损坏布局 corpus（SHA-256 `342f559d8106b538e8b41bc562041bb9dbaeb34b3e969275daccc1fc560149e5`）含 9 类失败模式；`validate_buffer_list_chain` 最多遍历 capacity 个节点，确定性分类截断、溢出、非法 offset、cycle、错误 tail、slice capacity 与 data range。本机 AppleClang Debug/ASan+UBSan 及远端 GCC 8.5 Debug/ASan 通过。
 - `E-M1-005`：提交 `ed4c7a8` 的 GitHub Actions run `32125329954` 七项作业全部成功，M1 退出门禁通过。
 - `E-M2-001`：move-only mapping owner 覆盖 file 双视图、创建端 unlink、memfd create/map 和 borrowed/transferred FD；本机 AppleClang Debug/ASan+UBSan 与远端 GCC 8.5 Debug/ASan 6/6 通过。
+- `E-M2-002`：单进程分级 buffer pool 覆盖配置、初始化/映射、档位选择与回退、耗尽/完整回收、角色 counter/token 及损坏 head/tail/size/used-length；本机与远端 Debug/Sanitizer 7/7 通过。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. 创建 `S-0201` 本地提交并纳入后续批次 push。
-2. 进入 `S-0202`，实现分级 buffer list 的单进程分配回收。
+1. 创建 `S-0202` 本地提交，与 `S-0201` 一起纳入后续批次 push。
+2. 进入 `S-0203`，实现双进程安全的原子分配回收和跨语言 slice 链验证。
 3. 批次 push 后检查 GitHub Actions 七项矩阵并补齐 M2 云端 evidence。

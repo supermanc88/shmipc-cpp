@@ -56,6 +56,7 @@ ssh 23.2 '
 - `shmipc.queue_layout`：C++ 同时验证 amd64/arm64 header offsets、12 字节 element、region size、越界 slot、截断和 arm64 manager 对齐限制。
 - `shmipc.buffer_layout`：manager/list/slice offsets、region size、creator/mapper counter 字段及截断/非法字段检查。
 - `shmipc.shared_memory_region`：file 双视图、move/unlink 生命周期，以及 Linux memfd 的 borrowed/transferred FD 所有权；非 Linux 明确验证 unsupported。
+- `shmipc.buffer_pool`：tier 配置与排序、creator/mapper 映射、最小档位及耗尽回退、完整回收、token ownership，以及损坏 head/tail/size/used-length 防护。
 - `shmipc.go_protocol_oracle`：固定 Go 上游验证控制协议、当前运行架构 queue、buffer 布局及 creator/mapper counter 的实际 pop/push 行为。
 - 任一 commit mismatch、缺行、重复/错序事件或字节差异均为失败，不允许自动更新 golden 后绕过评审。
 

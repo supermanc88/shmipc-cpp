@@ -56,6 +56,12 @@ target_include_directories(shmipc_shared_memory_region_test PRIVATE ${PROJECT_SO
 shmipc_apply_project_options(shmipc_shared_memory_region_test)
 add_test(NAME shmipc.shared_memory_region COMMAND shmipc_shared_memory_region_test)
 
+add_executable(shmipc_buffer_pool_test buffer_pool_test.cpp)
+target_link_libraries(shmipc_buffer_pool_test PRIVATE shmipc::shmipc)
+target_include_directories(shmipc_buffer_pool_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+shmipc_apply_project_options(shmipc_buffer_pool_test)
+add_test(NAME shmipc.buffer_pool COMMAND shmipc_buffer_pool_test)
+
 if(SHMIPC_ENABLE_GO_ORACLE_TESTS)
     find_program(SHMIPC_GO_EXECUTABLE go)
     if(NOT SHMIPC_GO_EXECUTABLE)

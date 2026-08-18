@@ -19,6 +19,7 @@
 | amd64/arm64 queue layout golden | 已验证 | 两架构 Go oracle、C++ 双布局、run `32125329954` | 持续回归 |
 | buffer manager/list/slice layout golden | 已验证 | 角色 counter probe、C++/ASan、run `32125329954` | 持续回归 |
 | file/memfd RAII mapping | 本地与远端已验证 | AppleClang、GCC 8.5 Debug/ASan，真实 memfd ownership | 随下一批 push 补云端证据 |
+| 单进程分级 buffer pool | 本地与远端已验证 | 档位回退、角色 counter/token、损坏 header、Debug/Sanitizer | 随下一批 push 补云端证据 |
 
 ## 产品需求
 
@@ -29,7 +30,8 @@
 | `PROTO-001` | 控制头、事件、metadata 与 fallback 编解码 | 已验证 | `S-0101` |
 | `PROTO-002` | v2/v3 初始化状态机 | 未开始 | `S-0401` |
 | `SHM-001` | Queue/buffer manager/slice 共享布局与映射 | byte layout 已云端验证；mapping 本机/远端已验证 | `S-0102..0103`/`S-0201` |
-| `SHM-002..003` | 分配回收与零拷贝生命周期 | 未开始 | M2 |
+| `SHM-002` | 分级 buffer 分配回收 | 单进程路径已验证；跨进程原子路径待实现 | `S-0202..0203` |
+| `SHM-003` | 链式 slice 与零拷贝生命周期 | 未开始 | `S-0203`/`S-0205` |
 | `SHM-004` | 损坏 offset/length 防护 | 9 类固定 corpus 与 run `32125329954` 已验证 | `S-0104` |
 | `QUEUE-001` | MPSC queue put/pop | 布局访问器已验证，并发算法未开始 | `S-0102`/`S-0204` |
 | `QUEUE-002` | working flag 与批量唤醒 | 字段布局已验证，状态算法未开始 | `S-0204` |

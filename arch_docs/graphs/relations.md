@@ -17,6 +17,7 @@ graph TD
   queue_layout["src/shm/queue_layout"]
   buffer_layout["src/shm/buffer_layout"]
   mapping["src/shm/shared_memory_region"]
+  pool["src/shm/buffer_pool"]
   golden_test["C++ codec tests"]
 
   consumer -- includes --> public
@@ -37,6 +38,8 @@ graph TD
   buffer_layout -- reads/writes --> golden
   library -- contains --> mapping
   mapping -- owns --> os_mapping["mmap / file FD / memfd"]
+  pool -- uses --> buffer_layout
+  pool -- manages --> pool_bytes["tiered free lists / allocations"]
   ci -- runs --> runner
 ```
 

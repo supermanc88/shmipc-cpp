@@ -2,7 +2,7 @@
 
 ## Summary
 
-当前仓库已建立 C++17/CMake 可验证骨架，并已加入控制协议 codec、queue/buffer 显式布局访问器及 file/memfd RAII mapping。静态 library target、CTest、编译告警/Sanitizer、安装导出及固定 Go oracle 均已接入；共享内存分配器和并发 queue 算法尚未开始。
+当前仓库已建立 C++17/CMake 可验证骨架，并已加入控制协议 codec、queue/buffer 显式布局、file/memfd RAII mapping 和单进程分级 buffer pool。静态 library target、CTest、编译告警/Sanitizer、安装导出及固定 Go oracle 均已接入；跨进程原子 allocator 和并发 queue 算法尚未实现。
 
 ## Directory Contents（深度=1）
 
@@ -16,7 +16,7 @@
 | `cmake/` | 目录 | ✅ | 工程选项与 package config 模板 |
 | `docs/` | 目录 | ✅ | C++ 移植计划与项目标准工作流 |
 | `include/shmipc/` | 目录 | ✅ | 公共 C++ API；当前为版本接口 |
-| `src/` | 目录 | ✅ | library 实现；包含版本、control codec、共享布局与 mapping |
+| `src/` | 目录 | ✅ | library 实现；包含版本、control codec、共享布局、mapping 与 buffer pool |
 | `tests/` | 目录 | ✅ | CTest 测试 target |
 | `third_party/` | 目录 | ✅ | 上游参考实现聚合目录 |
 | `tools/` | 目录 | ✅ | Go oracle 等开发验证工具 |
@@ -38,6 +38,7 @@
 - `src/shm/buffer_layout.cpp:82-225` 实现 manager/list/slice 布局；Go 双视图 probe 证明 `+20/+24` 是 creator/mapper 独立 counter。
 - 提交 `ed4c7a8` 的 GitHub Actions run `32125329954` 七项作业全部成功，M1 完成。
 - `src/shm/shared_memory_region.cpp:100-315` 实现 move-only file/memfd mapping；`tests/shared_memory_region_test.cpp:21-137` 已在本机 AppleClang 和远端 GCC 8.5 Debug/ASan 通过。
+- `src/shm/buffer_pool.cpp:169-305,347-512` 实现单进程分级分配回收与严格映射校验；`tests/buffer_pool_test.cpp:18-216` 已在本机和远端 Debug/Sanitizer 通过。
 
 ## Guesses & Uncertainties
 
