@@ -9,12 +9,14 @@ graph TD
   library["shmipc library"]
   implementation["src/version.cpp"]
   package["shmipcConfig.cmake / shmipcTargets.cmake"]
+  ci[".github/workflows/ci.yml"]
 
   consumer -- includes --> public
   consumer -- links --> library
   implementation -- implements --> public
   library -- contains --> implementation
   package -- exports --> library
+  ci -- configures/builds/tests/installs --> library
 ```
 
 ## 运行时边界

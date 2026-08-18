@@ -6,7 +6,7 @@
 |---|---|
 | 项目类型 | Go 到 C++ 的跨语言、跨运行时重实现 |
 | 参考实现 | `third_party/shmipc-go` commit `55c241eea321071278d1ee7f7c46292d23e50a5b` |
-| 当前阶段 | M0 执行中；S-0001 C++17/CMake 骨架已验收，开始 S-0002 Linux CI/Sanitizer 门禁 |
+| 当前阶段 | M0 执行中；S-0001 已验收，S-0002 Linux CI/Sanitizer 已配置并待首次云端运行 |
 | 已确认目标 | 在 Linux 上提供现代 C++ 共享内存 IPC 库，并与固定 Go 实现双向互通；Go 仅用于开发验收 |
 | 流程依据 | 用户提供的《软件项目端到端标准工作流程》 |
 | 架构依据 | [上游架构概要](../arch_docs/01_OVERVIEW.md) 与 [决策/风险](../arch_docs/02_DECISIONS.md) |
@@ -145,7 +145,7 @@ tools/
 切片：
 
 - `S-0001`（已验收）：CMake 工程、library target、测试 target、编译告警和 `git diff --check` 门禁。
-- `S-0002`：Linux CI，覆盖 Debug/Release 和 x86_64；建立 ASan/UBSan/TSan 入口。
+- `S-0002`（已配置，待云端验证）：Ubuntu 24.04 CI 覆盖 GCC/Clang × Debug/Release，并建立 ASan+UBSan/TSan 独立门禁。
 - `S-0003`：Go oracle 与固定 commit 校验，生成首个 control-header golden。
 
 退出条件：干净 Linux 环境能配置、编译、运行空测试和 oracle；CI 保存报告；项目 README 给出唯一命令入口。
@@ -287,12 +287,13 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-BASE-004`：交叉编译的固定 Go 基线在 `10.210.23.2` 完整测试 `PASS`、退出码 0。
 - `E-M0-001`：C++17 骨架在 macOS/AppleClang 完成 Debug、CTest、install 与 ASan+UBSan；在远端 Linux/GCC 8.5 完成 Debug、CTest 与 `lib64` install。
 - `E-M0-002`：用户安装 `libasan-8.5.0` 后，远端独立 ASan 构建和 CTest 通过；UBSan/TSan 仍因缺失对应 `/usr/lib64` runtime 而阻塞。
+- `E-M0-003`：`.github/workflows/ci.yml` 已通过 YAML 解析；本机 Release build/test/install 与远端 GCC 8.5 Release/ASan 重放通过，首轮 GitHub Actions 结果待 push 后补充。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. 提交已验收的 `S-0001` C++17/CMake/library/test/install 骨架。
-2. 执行 `S-0002`：建立 Linux CI、Debug/Release 与 Sanitizer 门禁。
-3. 建立 `docs/feature-matrix.md`、首批 ADR 和 `docs/regression-test-guide.md`，随后进入 `S-0003` Go oracle/control-header golden。
+1. push `S-0002` 候选提交并取得首轮 GitHub Actions 云端矩阵结果；成功后完成验收状态和 evidence 回写。
+2. 建立 `docs/feature-matrix.md`、首批 ADR 和 `docs/regression-test-guide.md`。
+3. 进入 `S-0003` Go oracle/control-header golden。
 4. M0 验收后再进入共享布局实现，不跨越 M1 的 counter offset 决策门。

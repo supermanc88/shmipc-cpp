@@ -17,6 +17,7 @@
 | 路径 | 文档 | 状态 | 标签 | 说明 |
 |---|---|---|---|---|
 | `/` | [dirs/root.md](dirs/root.md) | ✅ | #cpp-root #bootstrap | C++17/CMake 最小工程骨架，S-0001 已验收 |
+| `.github/workflows/` | [dirs/root.md](dirs/root.md) | ✅ | #ci #linux | Linux 编译、安装和 Sanitizer 门禁 |
 | `arch_docs/` | 本索引 | ✅ | #architecture | 可持续更新的架构记忆 |
 | `cmake/` | [dirs/root.md](dirs/root.md) | ✅ | #build #install | 编译选项、Sanitizer 和 CMake package 配置 |
 | `docs/` | [移植计划](../docs/SHMIPC_CPP_PORTING_PLAN.md)、[项目工作流](../docs/PROJECT_WORKFLOW.md) | ✅ | #plan #workflow | 需求、里程碑、门禁与远程验证流程 |
@@ -32,6 +33,7 @@
 
 | 路径 | 状态 | 标签 | 说明 |
 |---|---|---|---|
+| `.github/workflows/ci.yml` | ✅ | #ci #gcc #clang #sanitizer | Ubuntu 24.04 Debug/Release 与 Sanitizer 矩阵 |
 | `CMakeLists.txt` | ✅ | #cmake #install | C++17 library、CTest、安装与 package export |
 | `cmake/ShmipcProjectOptions.cmake` | ✅ | #warnings #sanitizer | GCC/Clang/MSVC 告警策略及 ASan/UBSan/TSan 入口 |
 | `include/shmipc/version.hpp` | ✅ | #public-api #version | 当前最小公共 API 和版本声明 |

@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.compiler }} / ${{ matrix.build_type }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        build_type: [Debug, Release]
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.compiler == 'gcc' && 'gcc' || 'clang' }}
+          CXX: ${{ matrix.compiler == 'gcc' && 'g++' || 'clang++' }}
+        run: >-
+          cmake -S . -B build/ci -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DSHMIPC_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build/ci --parallel
+
+      - name: Test
+        run: ctest --test-dir build/ci --output-on-failure
+
+      - name: Verify installation
+        run: cmake --install build/ci --prefix "${{ runner.temp }}/shmipc-install"
+
+  sanitizer:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ASan + UBSan
+            cmake_flags: >-
+              -DSHMIPC_ENABLE_ASAN=ON
+              -DSHMIPC_ENABLE_UBSAN=ON
+            runtime_options: >-
+              ASAN_OPTIONS=detect_leaks=1:halt_on_error=1
+              UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1
+          - name: TSan
+            cmake_flags: -DSHMIPC_ENABLE_TSAN=ON
+            runtime_options: TSAN_OPTIONS=halt_on_error=1
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Configure
+        env:
+          CC: gcc
+          CXX: g++
+        run: >-
+          cmake -S . -B build/sanitizer -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DSHMIPC_WARNINGS_AS_ERRORS=ON
+          ${{ matrix.cmake_flags }}
+
+      - name: Build
+        run: cmake --build build/sanitizer --parallel
+
+      - name: Test
+        run: ${{ matrix.runtime_options }} ctest --test-dir build/sanitizer --output-on-failure

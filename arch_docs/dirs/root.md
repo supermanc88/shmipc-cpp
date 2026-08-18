@@ -8,6 +8,7 @@
 
 | 路径 | 类型 | 状态 | 说明 |
 |---|---|---|---|
+| `.github/workflows/` | 目录 | ✅ | Ubuntu Linux 编译、测试、安装与 Sanitizer CI |
 | `.gitmodules` | 文件 | ✅ | 声明 `third_party/shmipc-go` 子模块 |
 | `CMakeLists.txt` | 文件 | ✅ | 顶层工程、library/test、安装与 package export |
 | `README.md` | 文件 | ✅ | 项目定位和唯一构建入口 |
@@ -24,6 +25,7 @@
 - `.gitmodules` 将 Go 参考实现指向 `https://github.com/cloudwego/shmipc-go.git`。
 - `CMakeLists.txt` 声明 C++17 target `shmipc` 与 alias `shmipc::shmipc`，并导出 CMake package。
 - `tests/version_test.cpp` 通过公开头调用 library 实现，构成首个端到端链接测试。
+- `.github/workflows/ci.yml:18-89` 定义 GCC/Clang Debug/Release 常规矩阵及 ASan+UBSan/TSan 独立矩阵。
 - 2026-08-18：本机 Debug/test/install 与 ASan+UBSan 通过；远端 Linux GCC 8.5 Debug/test/install 及独立 ASan 通过，UBSan/TSan 仍缺远端运行库。
 
 ## Guesses & Uncertainties

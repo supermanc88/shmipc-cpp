@@ -92,6 +92,16 @@ Sanitizer 使用独立构建目录，不能混用编译产物：`build/asan`、`
 
 远端已安装 `libasan-8.5.0-10.el8.x86_64`，独立 ASan 构建与 CTest 已通过。`libubsan` 和 `libtsan` 仍缺失，因此 ASan+UBSan 组合与 TSan 尚不能链接。未经用户授权不继续修改系统包；在环境补齐前，本机 AppleClang 的 ASan+UBSan 仅作快速检查，不能替代正式 Linux UBSan/TSan 门禁。
 
+### GitHub Actions 门禁
+
+`.github/workflows/ci.yml` 在 push、pull request 和手工触发时运行：
+
+- 常规矩阵：Ubuntu 24.04，GCC/Clang × Debug/Release，执行配置、编译、CTest 和安装。
+- Sanitizer 矩阵：GCC Debug，分别执行 ASan+UBSan 和 TSan。
+- checkout 使用只读仓库权限、禁用凭据持久化，并递归拉取固定 Go submodule。
+
+远程主机用于开发中快速复核，GitHub Actions 用于独立环境门禁；两者结果分别记录，不相互冒充。workflow 首次 push 并运行成功前，`S-0002` 只能标记为“已配置、待云端验证”。
+
 ## 5. Go 基线与互操作
 
 Go 与 C++ 双向互操作已确认为项目正确性验证目标，但 Go 不是 C++ 库的运行依赖。
