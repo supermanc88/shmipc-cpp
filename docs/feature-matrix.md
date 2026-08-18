@@ -13,8 +13,8 @@
 | C++17 library/test/install 骨架 | 已验证 | `S-0001`，提交 `23e7043` | 随公共 API 演进持续回归 |
 | GCC/Clang Debug/Release CI | 已验证 | `S-0002`，run `32116398237` | 保持 required check |
 | ASan+UBSan/TSan CI | 已验证 | `S-0002`，run `32116398237` | 核心内存/并发切片强制进入门禁 |
-| 固定 Go oracle commit 校验 | 已实现，待 CI | `tools/go_oracle/run_control_header_oracle.go` | push 后取得云端 evidence |
-| control-header golden | 已实现，待 CI | `tests/data/golden/control_headers.txt` | M1 生产编解码复用同一 fixture |
+| 固定 Go oracle commit 校验 | 已验证 | run `32119710781` Go 1.25.10 作业 | 升级 submodule 时强制重验 |
+| control-header golden | 已验证 | Go/C++/远端/云端共同验证 | M1 生产编解码复用同一 fixture |
 
 ## 产品需求
 

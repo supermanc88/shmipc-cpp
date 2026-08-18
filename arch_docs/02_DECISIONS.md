@@ -49,11 +49,11 @@
 
 ### D-008：Go oracle 通过 overlay 访问固定上游内部编码器
 
-- 状态：已实现，待首轮云端验证
+- 状态：已验证
 - 理由：`header.encode` 与事件常量未导出；复制算法不能构成独立 oracle，直接向 submodule 写测试文件又会污染固定参考实现。
 - 决策：runner 先严格校验 submodule commit，再用 Go overlay 将外部 test source 映射为上游 package 的虚拟 `_test.go`，从而直接调用真实未导出符号且不修改 submodule。
 - fixture：`tests/data/golden/control_headers.txt` 全量覆盖事件类型 0..9，并使用多字节 length 探针锁定大端布局；当前只证明 header primitive，不外推 event body 或状态机兼容。
-- 证据：`tools/go_oracle/run_control_header_oracle.go:13-68`、`control_header_oracle_test.gotxt:13-85`、`tests/control_header_golden_test.cpp`；本机三项 CTest 和远端两项 C++ CTest/ASan 均通过。
+- 证据：`tools/go_oracle/run_control_header_oracle.go:13-68`、`control_header_oracle_test.gotxt:13-85`、`tests/control_header_golden_test.cpp`；本机三项 CTest 和远端两项 C++ CTest/ASan 均通过，提交 `34ef510` 的 GitHub Actions run [`32119710781`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32119710781) 中 Go oracle 作业及完整七项矩阵全部成功。
 
 ### D-009：自动化可完整验收的切片允许自测后直接本地提交
 
@@ -120,3 +120,4 @@
 - 2026-08-18：提交 `eeae84e` 的首轮 GitHub Actions run `32116398237` 完整成功，验证六项 CI 矩阵均非跳过且步骤级通过；`S-0002` 从“待云端验证”转为“已验证”。影响文档：本文件、`01_OVERVIEW.md`、`dirs/root.md`、项目工作流与移植计划。
 - 2026-08-18：新增固定 Go commit 检查、overlay oracle、10 类 control-header golden 和 C++ fixture 消费测试；本机 oracle/C++ 测试与远端 GCC 8.5/ASan 通过。证据：`tools/go_oracle/`、`tests/data/golden/control_headers.txt`、`tests/control_header_golden_test.cpp`；影响文档：索引、概要、根目录、关系图、项目计划/工作流及新增回归指南/ADR/功能矩阵。
 - 2026-08-18：用户授权自动化可完整验收的切片在自测通过后直接创建本地 commit，同时保留人工测试与远程写操作的授权边界。影响文档：本文件、项目工作流和移植计划。
+- 2026-08-18：提交 `34ef510` 的 GitHub Actions run `32119710781` 完整成功；Go 1.25.10 oracle 的 setup/configure/build/test 与其余六项矩阵全部通过，`S-0003` 和 M0 转为已验证。影响文档：索引、概要、本文件、根目录、oracle 目录、项目工作流、移植计划和功能矩阵。

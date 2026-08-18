@@ -17,6 +17,7 @@
 - `run_control_header_oracle.go:31-38` 在运行 oracle 前读取并严格比较 submodule HEAD。
 - `run_control_header_oracle.go:40-68` 仅在系统临时目录创建 overlay，随后调用上游 `go test` 并清理。
 - `control_header_oracle_test.gotxt:18-27` 全量映射事件类型 0..9；`:71-75` 调用上游 `header.encode` 并逐字节比较。
+- 提交 `34ef510` 的 GitHub Actions run `32119710781` 在 Go 1.25.10 下完成 setup、configure、build 和 test，作业结论 success。
 
 ## Guesses & Uncertainties
 

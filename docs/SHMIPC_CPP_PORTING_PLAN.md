@@ -6,7 +6,7 @@
 |---|---|
 | 项目类型 | Go 到 C++ 的跨语言、跨运行时重实现 |
 | 参考实现 | `third_party/shmipc-go` commit `55c241eea321071278d1ee7f7c46292d23e50a5b` |
-| 当前阶段 | M0 执行中；S-0001/S-0002 已验证，S-0003 Go oracle/control-header golden 已实现并待云端验证 |
+| 当前阶段 | M0 已完成并通过本机、远端及 GitHub Actions 验证；下一步进入 M1 `S-0101` 控制协议生产实现 |
 | 已确认目标 | 在 Linux 上提供现代 C++ 共享内存 IPC 库，并与固定 Go 实现双向互通；Go 仅用于开发验收 |
 | 流程依据 | 用户提供的《软件项目端到端标准工作流程》 |
 | 架构依据 | [上游架构概要](../arch_docs/01_OVERVIEW.md) 与 [决策/风险](../arch_docs/02_DECISIONS.md) |
@@ -146,9 +146,11 @@ tools/
 
 - `S-0001`（已验收）：CMake 工程、library target、测试 target、编译告警和 `git diff --check` 门禁。
 - `S-0002`（已验证）：Ubuntu 24.04 CI 覆盖 GCC/Clang × Debug/Release，并建立 ASan+UBSan/TSan 独立门禁；提交 `eeae84e` 的首轮六项矩阵全部通过。
-- `S-0003`（已实现，待云端验证）：Go oracle 与固定 commit 校验，10 类事件 control-header golden，以及 C++ fixture 消费测试。
+- `S-0003`（已验证）：Go oracle 与固定 commit 校验，10 类事件 control-header golden，以及 C++ fixture 消费测试；run `32119710781` 云端通过。
 
 退出条件：干净 Linux 环境能配置、编译、运行空测试和 oracle；CI 保存报告；项目 README 给出唯一命令入口。
+
+状态：**已完成**。`S-0001..0003` 的本机、远端 Linux 和独立 GitHub Actions evidence 均已建立。
 
 ### M1：协议与共享布局锁定
 
@@ -288,12 +290,12 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-M0-001`：C++17 骨架在 macOS/AppleClang 完成 Debug、CTest、install 与 ASan+UBSan；在远端 Linux/GCC 8.5 完成 Debug、CTest 与 `lib64` install。
 - `E-M0-002`：用户安装 `libasan-8.5.0` 后，远端独立 ASan 构建和 CTest 通过；UBSan/TSan 仍因缺失对应 `/usr/lib64` runtime 而阻塞。
 - `E-M0-003`：提交 `eeae84e` 的 GitHub Actions run [`32116398237`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32116398237) 总结论 success；GCC/Clang × Debug/Release、ASan+UBSan、TSan 六项均执行并通过，常规四项安装验证通过。
-- `E-M0-004`：固定 commit runner 与 overlay oracle 在本机通过；10 类 control-header golden（SHA-256 `ee6379a976c47c4d81c894ecf110132884ee8e48086091338cb17a8d8765fdfa`）被 Go `header.encode` 和 C++ test 共同验证，远端 GCC 8.5 Debug/ASan 两项 C++ 测试通过；云端 Go 1.25.10 作业待 push 后补证。
+- `E-M0-004`：固定 commit runner 与 overlay oracle 在本机通过；10 类 control-header golden（SHA-256 `ee6379a976c47c4d81c894ecf110132884ee8e48086091338cb17a8d8765fdfa`）被 Go `header.encode` 和 C++ test 共同验证，远端 GCC 8.5 Debug/ASan 两项 C++ 测试通过；提交 `34ef510` 的 GitHub Actions run [`32119710781`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32119710781) 中 Go oracle 与完整七项矩阵全部成功。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. 提交并 push `S-0003`，取得 Go oracle 云端作业 evidence。
-2. 完成 M0 验收后进入 M1 `S-0101` 控制协议生产实现。
+1. 进入 M1 `S-0101`：实现控制 header、事件枚举、metadata 和 fallback 编解码。
+2. 复用 `E-M0-004` golden，加入正常与截断/非法字段测试。
 3. 不跨越 M1 的 counter offset 决策门进入共享布局实现。

@@ -75,7 +75,7 @@
 
 ## 分析进度
 
-- 已完成：顶层模块、协议头、握手、共享内存布局、队列、buffer 生命周期、Session/Stream 主链路、公开 API、测试与 CI 基线；C++17/CMake 骨架和首个 Go control-header oracle 已在本机与远端验证。
+- 已完成：顶层模块、协议头、握手、共享内存布局、队列、buffer 生命周期、Session/Stream 主链路、公开 API、测试与 CI 基线；M0 的 C++17/CMake 骨架、Linux CI 和 Go control-header oracle 已完成本机、远端及云端验证。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
 - 待验证：C++ 与 Go 的双向互操作、共享内存原子内存序、`bufferList.counter` 偏移差异。固定 Go 基线已在远程 Linux x86_64 主机完整通过。
 

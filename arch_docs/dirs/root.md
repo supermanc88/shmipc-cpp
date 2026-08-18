@@ -30,6 +30,7 @@
 - 2026-08-18：本机 Debug/test/install 与 ASan+UBSan 通过；远端 Linux GCC 8.5 Debug/test/install 及独立 ASan 通过，UBSan/TSan 仍缺远端运行库。
 - 2026-08-18：提交 `eeae84e` 的 GitHub Actions run `32116398237` 中，GCC/Clang Debug/Release、ASan+UBSan 和 TSan 六项全部通过。
 - `tools/go_oracle/run_control_header_oracle.go:31-68` 校验固定 commit，并以临时 overlay 调用真实上游编码器；`tests/control_header_golden_test.cpp` 消费同一 fixture。
+- 2026-08-18：提交 `34ef510` 的 GitHub Actions run `32119710781` 七项作业全部通过，包括独立 Go control-header oracle。
 
 ## Guesses & Uncertainties
 
