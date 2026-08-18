@@ -101,7 +101,7 @@
 
 ### D-014：mapping 以 move-only owner 和显式资源责任建模
 
-- 状态：`S-0201` 本机与远端已验证，待批次云端证据
+- 状态：已验证；提交 `281d024` 的 run `32129419428` 通过
 - 决策：`SharedMemoryRegion` 唯一拥有 mapping，不可复制但可移动；析构/`reset` 负责 `munmap`，memfd 还负责关闭 descriptor。
 - FD 语义：`borrowed` 先复制 descriptor，调用者保留原所有权；`transferred` 从函数入口接管，后续成功或失败都关闭。所有创建/复制 descriptor 使用 close-on-exec。
 - 文件语义：创建使用 `O_EXCL`，避免静默截断同名共享区；创建者默认 unlink，mapper 永不隐式删除路径。相较 Go 按 map type 统一删除路径，这是不影响 wire/layout 的生命周期加固。
@@ -110,7 +110,7 @@
 
 ### D-015：单进程 buffer pool 保留 sentinel，并用角色 token 约束回收
 
-- 状态：`S-0202` 本机与远端已验证，待批次云端证据
+- 状态：已验证；提交 `281d024` 的 run `32129419428` 通过
 - 兼容语义：tiers 按 capacity 升序；请求从最小合适档位开始，耗尽后继续尝试更大档位；每个 free list 永远保留最后一个 sentinel，所以可分配数量为 `size - 1`。
 - 所有权：`BufferAllocation` 不可复制且只可 move-construct，记录 memory、list 与 creator/mapper 角色；只有匹配 view 可回收，成功后 token 失效。token 析构不自动回收，以便后续跨进程转移逻辑所有权。
 - 安全边界：mapper 要求 manager used-length 精确覆盖所有 lists，free-chain 节点数等于 header size，节点为 clean/free 状态；allocate/recycle 每次重新校验 head/tail 范围和 stride 对齐。
@@ -119,7 +119,7 @@
 
 ### D-016：共享 free-list 使用 always-lock-free 32 位 seq_cst 原子
 
-- 状态：`S-0203` 本机、远端与双向 Go oracle 已验证，待批次云端证据
+- 状态：已验证；提交 `281d024` 的 run `32129419428` 通过
 - 原子模型：size/head/tail/角色 counter 使用 GCC/Clang `__atomic` always-lock-free 32 位 primitive，统一 `__ATOMIC_SEQ_CST`，与 Go `sync/atomic` 默认顺序一致。
 - 发布顺序：pop 先原子预留 size，再以 CAS 取得 head；push 先重置独占 slice，以 CAS 推进 tail并链接旧 tail，最后原子增加 size。旧 head/tail 可能在读取后被竞争者推进，因此只有 CAS 成功决定所有权，陈旧普通字段触发重试而非损坏判定。
 - 对齐：tier capacity 必须为 4 的倍数；初始化和 mapper 都验证 size/head/tail 及 `+20/+24` counters 自然对齐。编译期拒绝非 lock-free 32 位目标。
@@ -127,7 +127,7 @@
 
 ### D-017：跨进程 slice 链以 publish/adopt 转移逻辑所有权
 
-- 状态：`S-0203` 双向 Go↔C++ oracle 已验证，待批次云端证据
+- 状态：已验证；提交 `281d024` 的 run `32129419428` 通过
 - 发送端：从最大档位向下分配，写入每个 slice 的 size、in-use/has-next 和下一个绝对共享内存 offset；发布成功后发送端 tokens 失效。
 - 接收端：从 root offset 有界遍历并校验 slot、capacity、data range、in-use 和 cycle，再创建本角色 tokens；回收减少接收角色的净 counter。
 - 验收：C++ 发布 20,000 字节链供 Go 读取/回收，Go 再发布等量链供 C++ 读取/回收；两方向 payload、root/next offsets、free-list 完整性和最终两个角色 counter 均验证。
@@ -202,3 +202,4 @@
 - 2026-08-18：提交 `ed4c7a8` 的 GitHub Actions run `32125329954` 七项作业全部成功，M1 完成；新增 `S-0201` move-only file/memfd mapping，明确 creator/mapper 路径清理和 borrowed/transferred FD 所有权。本机 AppleClang 与远端 GCC 8.5 Debug/Sanitizer 通过。证据：`src/shm/shared_memory_region.*`、`tests/shared_memory_region_test.cpp`；影响文档：索引、概要、本文件、root/shm 目录、mapping 文件、关系图、计划、回归指南和功能矩阵。
 - 2026-08-18：新增 `S-0202` 单进程分级 buffer pool，保留上游 sentinel 与大档位回退语义，并以 move-only 角色 token、严格 free-chain/offset 校验加固回收边界。本机与远端 Debug/Sanitizer 通过。证据：`src/shm/buffer_pool.*`、`tests/buffer_pool_test.cpp`；影响文档：索引、概要、本文件、root/shm 目录、buffer pool 文件、关系图、计划、回归指南和功能矩阵。
 - 2026-08-18：`S-0203` 将 free-list 更新升级为 always-lock-free 32 位 seq_cst 原子，实现 chain allocate/publish/adopt/recycle，并以双向 Go↔C++ 20,000 字节链路验证。并发/互操作实验修正先前 counter 推断：字段是各角色本地 pop-push 净值，不是严格 outstanding 数量。证据：`src/shm/atomic_word.hpp`、`src/shm/buffer_pool.*`、`tests/buffer_pool_test.cpp`、`tests/buffer_pool_interop_helper.cpp`、Go oracle；影响文档：索引、概要、本文件、root/shm/oracle 目录、buffer pool/atomic 文件、关系图、计划、工作流、回归指南和功能矩阵。
+- 2026-08-18：提交 `281d024` 的 GitHub Actions run `32129419428` 七项作业全部成功，包含 Linux TSan、ASan+UBSan、GCC/Clang Debug/Release 与 Go 双向 chain oracle；`S-0201..0203` 云端门禁关闭。

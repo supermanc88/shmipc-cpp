@@ -133,9 +133,9 @@
 - `S-0102` 验证：Go oracle 在 Darwin arm64 与 amd64 运行路径分别验证真实 queue 指针布局；C++ 同时消费两行 golden，远端 GCC 8.5 Debug/ASan 通过；run `32125329954` 云端通过。
 - `S-0103` 验证：Go 双视图实验确认 creator/mapper pop 只增加各自 `+20/+24` counter，push 后独立归零；两架构 Go oracle、C++ layout tests 及远端 GCC 8.5 Debug/ASan 通过。
 - `S-0104` 验证：buffer free-list validator 以 capacity 限制遍历次数，并通过固定 corpus 分类截断、溢出、非法 offset、cycle、tail/capacity/data-range 损坏；本机、远端及 run `32125329954` 已通过，M1 完成。
-- `S-0201` 验证：file/memfd RAII mapping 已通过本机 AppleClang Debug/ASan+UBSan，以及远端 Linux GCC 8.5 Debug/ASan；Linux 测试实际执行 memfd 创建与 FD 借用/转移路径，待批次云端证据。
-- `S-0202` 验证：单进程分级 pool 已覆盖乱序配置排序、最小档位选择、耗尽后大档位回退、全部回收、creator/mapper counter、角色错配 token 和损坏 head/tail/size/used-length；本机与远端 Debug/Sanitizer 7/7 通过，待批次云端证据。
-- `S-0203` 验证：本机 20 轮、远端 10 轮双进程并发分配回收通过；AppleClang ASan+UBSan/TSan 与远端 GCC 8.5 ASan 通过。双向 oracle 完成 C++→Go→C++ 两条 20,000 字节链并恢复 free-list/counters，待批次云端证据。
+- `S-0201` 验证：file/memfd RAII mapping 已通过本机 AppleClang、远端 Linux GCC 8.5 和云端 sanitizer；Linux 测试实际执行 memfd 创建与 FD 借用/转移路径。
+- `S-0202` 验证：单进程分级 pool 已覆盖乱序配置排序、最小档位选择、耗尽后大档位回退、全部回收、creator/mapper counter、角色错配 token 和损坏 head/tail/size/used-length。
+- `S-0203` 验证：本机 20 轮、远端 10 轮双进程并发分配回收通过；双向 oracle 完成 C++→Go→C++ 两条 20,000 字节链并恢复 free-list/counters；提交 `281d024` 的 run `32129419428` 七项作业全部成功。
 - 时钟注意：本机当前比远端快约 2 分 20 秒；同步时不得保留本机文件时间戳，否则 Ninja 会反复重新生成。标准命令见 `PROJECT_WORKFLOW.md`。
 - Linux 运行基线：本机用 Go 1.25.10 交叉编译固定提交的 amd64 测试二进制，rsync 至远端后完整测试 `PASS`、退出码 0；覆盖 v2、v3/memfd、队列、Stream/Session 和热重启路径。
 - CI：`.github/workflows/tests.yaml` 在 Ubuntu 运行单测/benchmark，并在自托管 Linux 上覆盖 Go 1.21–1.25；`.github/workflows/pre_check.yaml` 运行许可证、拼写和 golangci-lint。
