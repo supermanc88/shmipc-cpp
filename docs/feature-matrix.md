@@ -26,16 +26,17 @@
 | BufferWriter/Reader 与 pin/release | 已验证 | 单片 borrowed、跨片 owned copy、RAII、Go oracle、run `32134325132` | 持续回归 |
 | Unix/TCP control socket 与 exact IO | 已验证 | partial/EOF/would-block、真实 TCP/Unix、三套本机配置、远端 GCC/ASan | 持续回归 |
 | Linux epoll control dispatcher | 已验证 | ET 可消费读缓冲、写背压/串行、关闭语义；远端 GCC Debug/Release/ASan、专项 100 次、run `32148166394` | 持续回归 |
+| v2 `/dev/shm` 握手 | 本机/远端已验证，待云端 | 双向真实 Go Session、错误/清理路径、远端 50/50、GCC 8.5 ASan | push 后检查七项 CI |
 
 ## 产品需求
 
 | Requirement IDs | 能力 | 状态 | 首个实现切片 |
 |---|---|---|---|
-| `COMP-001` | Go↔C++ v2 双向互通 | 基线锁定 | M3 |
+| `COMP-001` | Go↔C++ v2 双向互通 | 初始化握手已双向验证；Session/Stream 数据交换待实现 | M3 |
 | `S-0301` | Unix/TCP control transport 与 epoll | 已验证；run `32148166394` 七项门禁成功 | M3 |
 | `COMP-002` | Go↔C++ v3 双向互通 | 基线锁定 | M4 |
 | `PROTO-001` | 控制头、事件、metadata 与 fallback 编解码 | 已验证 | `S-0101` |
-| `PROTO-002` | v2/v3 初始化状态机 | 未开始 | `S-0401` |
+| `PROTO-002` | v2/v3 初始化状态机 | v2 已本机/远端验证；v3 待 M4 | `S-0302`/`S-0401` |
 | `SHM-001` | Queue/buffer manager/slice 共享布局与映射 | byte layout 与 mapping 已云端验证 | `S-0102..0103`/`S-0201` |
 | `SHM-002` | 分级 buffer 分配回收 | 单进程与双进程原子路径已云端验证 | `S-0202..0203` |
 | `SHM-003` | 链式 slice 与零拷贝生命周期 | publish/adopt/recycle 与 Reader/Writer pin/release 已由 run `32134325132` 验证 | `S-0203`/`S-0205` |

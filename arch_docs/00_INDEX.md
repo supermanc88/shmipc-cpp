@@ -5,6 +5,7 @@
 - [01_OVERVIEW.md](01_OVERVIEW.md)：上游 Go 实现的顶层架构概要
 - [02_DECISIONS.md](02_DECISIONS.md)：已验证结论、风险与待决策项
 - [dirs/root.md](dirs/root.md)：当前 C++ 工程根目录
+- [dirs/src__core.md](dirs/src__core.md)：C++ v2 握手与跨子系统组合层
 - [dirs/src__protocol.md](dirs/src__protocol.md)：C++ 控制协议生产 codec
 - [dirs/src__shm.md](dirs/src__shm.md)：C++ 共享内存显式布局访问器
 - [dirs/src__transport.md](dirs/src__transport.md)：Unix/TCP 控制 socket 与事件传输层
@@ -19,6 +20,7 @@
 - [files/src__shm__shared_queue.hpp.md](files/src__shm__shared_queue.hpp.md)：MPSC queue 与 working flag
 - [files/src__transport__control_socket.hpp.md](files/src__transport__control_socket.hpp.md)：move-only socket/listener 与 exact IO
 - [files/src__transport__epoll_dispatcher.hpp.md](files/src__transport__epoll_dispatcher.hpp.md)：Linux epoll、读缓冲、写背压与关闭生命周期
+- [files/src__core__v2_handshake.hpp.md](files/src__core__v2_handshake.hpp.md)：v2 握手状态、资源 ownership 与错误模型
 - [dirs/third_party__shmipc-go.md](dirs/third_party__shmipc-go.md)：Go 参考实现文件映射
 - [files/third_party__shmipc-go__const.go.md](files/third_party__shmipc-go__const.go.md)：协议与布局常量
 - [files/third_party__shmipc-go__protocol_event.go.md](files/third_party__shmipc-go__protocol_event.go.md)：控制协议事件格式
@@ -37,6 +39,7 @@
 | `docs/` | [移植计划](../docs/SHMIPC_CPP_PORTING_PLAN.md)、[项目工作流](../docs/PROJECT_WORKFLOW.md) | ✅ | #plan #workflow | 需求、里程碑、门禁与远程验证流程 |
 | `include/shmipc/` | [dirs/root.md](dirs/root.md) | ✅ | #public-api | 公共 C++ 头文件入口 |
 | `src/` | [dirs/root.md](dirs/root.md) | ✅ | #implementation | C++ 库实现入口 |
+| `src/core/` | [dirs/src__core.md](dirs/src__core.md) | ✅ | #handshake #v2 #interop | v2 文件路径握手已完成本机与远端双向验证 |
 | `src/protocol/` | [dirs/src__protocol.md](dirs/src__protocol.md) | ✅ | #protocol #codec #safety | header、metadata 与 fallback 生产编解码 |
 | `src/shm/` | [dirs/src__shm.md](dirs/src__shm.md) | ✅ | #shared-memory #layout #mmap #zero-copy | 显式布局、mapping、pool、queue 与 Buffer IO |
 | `src/transport/` | [dirs/src__transport.md](dirs/src__transport.md) | ✅ | #transport #socket #epoll | Unix/TCP 基础层与 Linux epoll dispatcher 已完成本机/远端验证 |
@@ -75,6 +78,8 @@
 | `src/transport/control_socket.cpp` | ✅ | #tcp #unix #posix | connect/listen/accept、exact IO 与路径清理 |
 | `src/transport/epoll_dispatcher.hpp` | ✅ | #transport #epoll #lifecycle | dispatcher、event connection、callback 与关闭原因接口 |
 | `src/transport/epoll_dispatcher.cpp` | ✅ | #linux #epoll #backpressure | ET 读、EPOLLOUT 等待、eventfd 停止与关闭串行化 |
+| `src/core/v2_handshake.hpp` | ✅ | #handshake #ownership #errors | v2 配置、结果与 move-only 共享资源聚合 |
+| `src/core/v2_handshake.cpp` | ✅ | #handshake #metadata #mapping | client 创建/发送与 server 接收/映射状态机 |
 | `tests/version_test.cpp` | ✅ | #test | 无第三方依赖的首个 library test |
 | `tests/control_header_golden_test.cpp` | ✅ | #test #protocol #golden | C++ 侧消费 control-header fixture |
 | `tests/protocol_codec_test.cpp` | ✅ | #test #protocol #negative | metadata/fallback round-trip 与异常输入测试 |
@@ -87,6 +92,8 @@
 | `tests/buffer_io_test.cpp` | ✅ | #test #zero-copy #lifetime | Writer/Reader、跨片慢路径、pin/release 与 RAII |
 | `tests/control_socket_test.cpp` | ✅ | #test #transport #socket | partial IO、EOF、would-block、TCP/Unix 与清理 |
 | `tests/epoll_dispatcher_test.cpp` | ✅ | #test #linux #concurrency | partial frame、背压、并发写、callback/close 与资源上限 |
+| `tests/v2_handshake_test.cpp` | ✅ | #test #handshake #cleanup | v2 成功、方向、错误帧、mapping 与事务清理 |
+| `tests/v2_handshake_interop_helper.cpp` | ✅ | #test #interop #v2 | 固定 Go oracle 调用的双向握手 helper |
 | `tests/buffer_pool_interop_helper.cpp` | ✅ | #test #interop #chain | Go oracle 调用的 C++ 双向 chain helper |
 | `tests/data/golden/control_headers.txt` | ✅ | #protocol #golden | 事件 0..9 的 8 字节控制头基线 |
 | `tests/data/golden/shm_metadata.txt` | ✅ | #protocol #golden | v2 文件路径与 v3 memfd metadata 基线 |
@@ -114,7 +121,7 @@
 
 | 功能/意图 | 主要实现 | 计划需求 |
 |---|---|---|
-| v2 `/dev/shm` 握手 | `protocol_initializer.go`, `protocol_manager.go` | `COMP-001`, `PROTO-001` |
+| v2 `/dev/shm` 握手 | `src/core/v2_handshake.*`, `protocol_initializer.go`, `protocol_manager.go` | `COMP-001`, `PROTO-002` |
 | 控制协议 codec 与 golden/oracle | `src/protocol/`, `tools/go_oracle/`, `tests/data/golden/` | `PROTO-001` |
 | v3 `memfd` + SCM_RIGHTS | `protocol_initializer.go`, `protocol_manager.go`, `block_io.go` | `COMP-002`, `PLAT-002` |
 | 共享内存分配与回收 | `buffer_manager.go`, `buffer_slice.go`, `buffer.go` | `SHM-001..004` |
@@ -134,9 +141,9 @@
 
 ## 分析进度
 
-- 已完成：上游架构分析、M0、M1、M2，以及 M3 `S-0301`；提交 `17a668e` 的 run `32148166394` 七项门禁全部成功。
+- 已完成：上游架构分析、M0、M1、M2，以及 M3 `S-0301`；`S-0302` 已完成本机/远端实现验证，等待 GitHub Actions 独立门禁。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
-- 待验证：完整 Session 的 Go↔C++ 双向互操作。BufferReader/Writer、pool/queue 原子语义和双向数据平面均已云端验证。
+- 待验证：完整 Session/Stream 数据交换。v2 初始化握手已在远端完成 Go client↔C++ server 与 C++ client↔Go server 双向验证。
 
 ## 状态标记
 

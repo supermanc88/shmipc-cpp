@@ -59,13 +59,21 @@ func main() {
 		fail(err)
 	}
 
-	command := exec.Command("go", "test", "-overlay", overlayPath, "-run", "^Test((ControlHeader|SharedMemoryMetadata|FallbackData|QueueLayout|BufferLayout)Golden|(BufferPool|Queue)Interop)$", "-count=1", ".")
+	compileOutput := os.Getenv("SHMIPC_GO_ORACLE_COMPILE_LINUX_AMD64")
+	commandArgs := []string{"test", "-overlay", overlayPath, "-run", "^Test((ControlHeader|SharedMemoryMetadata|FallbackData|QueueLayout|BufferLayout)Golden|(BufferPool|Queue|V2Handshake)Interop)$", "-count=1", "-v", "-timeout=20s", "."}
+	if compileOutput != "" {
+		commandArgs = []string{"test", "-c", "-overlay", overlayPath, "-o", compileOutput, "."}
+	}
+	command := exec.Command("go", commandArgs...)
 	command.Dir = goReference
 	command.Env = append(os.Environ(), "SHMIPC_CONTROL_HEADER_GOLDEN="+filepath.Join(root, "tests", "data", "golden", "control_headers.txt"))
 	command.Env = append(command.Env, "SHMIPC_SHM_METADATA_GOLDEN="+filepath.Join(root, "tests", "data", "golden", "shm_metadata.txt"))
 	command.Env = append(command.Env, "SHMIPC_FALLBACK_GOLDEN="+filepath.Join(root, "tests", "data", "golden", "fallback_data.txt"))
 	command.Env = append(command.Env, "SHMIPC_QUEUE_LAYOUT_GOLDEN="+filepath.Join(root, "tests", "data", "golden", "queue_layout.txt"))
 	command.Env = append(command.Env, "SHMIPC_BUFFER_LAYOUT_GOLDEN="+filepath.Join(root, "tests", "data", "golden", "buffer_layout.txt"))
+	if compileOutput != "" {
+		command.Env = append(command.Env, "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0")
+	}
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	if err := command.Run(); err != nil {

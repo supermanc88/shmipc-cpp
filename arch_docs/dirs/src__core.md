@@ -1,0 +1,35 @@
+# 目录 `src/core/`
+
+## Summary
+
+组合 protocol、transport 与 shm 子系统形成可执行的会话初始化步骤。当前实现 v2 文件路径握手；Session/Stream、v3 协商与 memfd 传递仍由后续切片补充。
+
+## Directory Contents
+
+| 路径 | 类型 | 状态 | 说明 |
+|---|---|---|---|
+| `v2_handshake.hpp` | 内部头文件 | ✅ | v2 配置、结果、细分错误与共享资源 ownership |
+| `v2_handshake.cpp` | C++ 实现 | ✅ | client 创建并发送 metadata；server 接收并映射资源 |
+
+## Invariants
+
+- v2 文件模式不做版本协商或 ACK；客户端只发送一帧 version 2 `share_memory_by_file_path` metadata。
+- client 是 buffer/queue 文件 creator，物理 queue 前半段为 send、后半段为 receive；server 映射后方向反转。
+- creator 独占路径 unlink 责任，mapper 只持有 mapping，避免 server 误删不属于自己的路径。
+- 握手复用 blocking `ControlSocket::read_full/write_full`；成功后 socket 仍由调用者拥有，便于 Session 将其移动到 epoll dispatcher。
+- 任一步骤失败时，已创建的文件和 mapping 通过 RAII 回滚；已存在的非本进程文件不会被删除。
+- 本层不实现 deadline；Session 初始化超时需要在后续集成层统一取消 socket 阻塞。
+
+## Evidence
+
+- 上游事件序列：`third_party/shmipc-go/protocol_initializer.go:52-65`、`protocol_manager.go:75-149`、`session.go:125-179`。
+- queue 创建/映射方向：`third_party/shmipc-go/queue.go:88-176`、`216-233`。
+- buffer 创建/映射：`third_party/shmipc-go/buffer_manager.go:182-245`、`573-602`。
+- `tests/v2_handshake_test.cpp` 覆盖成功、双向 queue、两角色 buffer、错误版本/事件、截断、缺失路径、已有文件保护及失败清理。
+- 固定 Go overlay 在远端 Linux 验证两个方向，并连续重复 50 轮；GCC 8.5 Debug 与 ASan 全量 CTest 通过。
+
+## Links
+
+- [v2 handshake 文件](../files/src__core__v2_handshake.hpp.md)
+- [架构概要](../01_OVERVIEW.md)
+- [回归测试指南](../../docs/regression-test-guide.md)

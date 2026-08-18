@@ -147,6 +147,8 @@ ssh 23.2 '
 
 2026-08-18 基线：本机 Go 1.25.10 生成的 Linux/amd64 测试二进制在远端完整执行 `PASS`，退出码 0。
 
+oracle runner 也支持直接交叉编译当前 overlay 测试：设置绝对路径环境变量 `SHMIPC_GO_ORACLE_COMPILE_LINUX_AMD64` 后执行 runner。该模式固定 `GOOS=linux GOARCH=amd64 CGO_ENABLED=0`，用于远端无 Go 环境下运行 Linux-only Go↔C++ 握手测试。
+
 正式互操作开始前，应选择以下一种可复现方案并记录 ADR：
 
 1. 在远端安装固定 Go 工具链；或

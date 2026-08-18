@@ -18,7 +18,7 @@ git diff --check
 go run tools/go_oracle/run_control_header_oracle.go
 ```
 
-运行器首先要求 `third_party/shmipc-go` HEAD 严格等于 `55c241eea321071278d1ee7f7c46292d23e50a5b`，然后通过临时 overlay 把 oracle test 注入上游 package。它直接调用上游控制协议、buffer pool 和 queue，并用 C++ helpers 做双向数据平面验证，不会修改 submodule 工作区。
+运行器首先要求 `third_party/shmipc-go` HEAD 严格等于 `55c241eea321071278d1ee7f7c46292d23e50a5b`，然后通过临时 overlay 把 oracle test 注入上游 package。它直接调用上游控制协议、buffer pool、queue 和真实 Session 初始化，并用 C++ helpers 做双向验证，不会修改 submodule 工作区。v2 Session 子项仅在 Linux 执行。
 
 也可通过 CTest 运行完整本机集合：
 
@@ -46,7 +46,17 @@ ssh 23.2 '
 '
 ```
 
-远端尚无 Go，因此默认只执行 C++ tests；Go oracle 由本机和 GitHub Actions 的独立作业承担。
+远端尚无 Go，因此默认只执行 C++ tests。需要运行 Linux-only v2 oracle 时，可由 runner 交叉编译带 overlay 的测试二进制：
+
+```bash
+SHMIPC_GO_ORACLE_COMPILE_LINUX_AMD64="$PWD/build/v2-oracle-linux-amd64" \
+  go run tools/go_oracle/run_control_header_oracle.go
+rsync -az --no-times --omit-dir-times build/v2-oracle-linux-amd64 \
+  23.2:/home/chm/shmipc-cpp/build/v2-oracle-linux-amd64
+ssh 23.2 'cd /home/chm/shmipc-cpp && \
+  SHMIPC_CPP_V2_HANDSHAKE_HELPER=$PWD/build/debug/tests/shmipc_v2_handshake_interop_helper \
+  ./build/v2-oracle-linux-amd64 -test.run "^TestV2HandshakeInterop$" -test.v'
+```
 
 ## 结果判定
 
@@ -61,7 +71,8 @@ ssh 23.2 '
 - `shmipc.buffer_io`：reserve/write/publish、单 slice borrowed view、跨 slice owned copy、peek/byte/string/discard、pin/release、逐 slice 推进、越界和 RAII 回收。
 - `shmipc.control_socket`：adopt/move ownership、partial exact IO、EOF/would-block、真实 loopback TCP、pathname Unix socket、重复 bind 与路径清理。
 - `shmipc.epoll_dispatcher`：Linux 上验证 ET partial frame 保留、writev、EAGAIN 背压、并发写无交错、remote/local/shutdown close、buffer/callback 错误与重入 close；非 Linux 明确验证 unsupported。
-- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用真实 C++ BufferWriter/Reader helper 双向传递 20,000 字节 slice chain，并传递各 1,000 个 queue elements，验证 payload、回收、free-list、角色净 counter、queue 方向翻转及 working flag。
+- `shmipc.v2_handshake`：验证 client/server 成功初始化、queue 方向翻转、两角色 buffer 分配回收、错误版本/事件、截断 body、缺失路径、重复文件保护与失败清理。
+- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用真实 C++ helpers 双向传递 20,000 字节 slice chain、各 1,000 个 queue elements，并在 Linux 验证两个方向的 v2 Session 初始化。
 - 任一 commit mismatch、缺行、重复/错序事件或字节差异均为失败，不允许自动更新 golden 后绕过评审。
 
 当前 golden 的 SHA-256：

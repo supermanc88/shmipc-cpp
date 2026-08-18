@@ -88,6 +88,12 @@ target_include_directories(shmipc_epoll_dispatcher_test PRIVATE ${PROJECT_SOURCE
 shmipc_apply_project_options(shmipc_epoll_dispatcher_test)
 add_test(NAME shmipc.epoll_dispatcher COMMAND shmipc_epoll_dispatcher_test)
 
+add_executable(shmipc_v2_handshake_test v2_handshake_test.cpp)
+target_link_libraries(shmipc_v2_handshake_test PRIVATE shmipc::shmipc Threads::Threads)
+target_include_directories(shmipc_v2_handshake_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+shmipc_apply_project_options(shmipc_v2_handshake_test)
+add_test(NAME shmipc.v2_handshake COMMAND shmipc_v2_handshake_test)
+
 add_executable(shmipc_buffer_pool_interop_helper buffer_pool_interop_helper.cpp)
 target_link_libraries(shmipc_buffer_pool_interop_helper PRIVATE shmipc::shmipc)
 target_include_directories(shmipc_buffer_pool_interop_helper PRIVATE ${PROJECT_SOURCE_DIR}/src)
@@ -97,6 +103,11 @@ add_executable(shmipc_shared_queue_interop_helper shared_queue_interop_helper.cp
 target_link_libraries(shmipc_shared_queue_interop_helper PRIVATE shmipc::shmipc)
 target_include_directories(shmipc_shared_queue_interop_helper PRIVATE ${PROJECT_SOURCE_DIR}/src)
 shmipc_apply_project_options(shmipc_shared_queue_interop_helper)
+
+add_executable(shmipc_v2_handshake_interop_helper v2_handshake_interop_helper.cpp)
+target_link_libraries(shmipc_v2_handshake_interop_helper PRIVATE shmipc::shmipc Threads::Threads)
+target_include_directories(shmipc_v2_handshake_interop_helper PRIVATE ${PROJECT_SOURCE_DIR}/src)
+shmipc_apply_project_options(shmipc_v2_handshake_interop_helper)
 
 if(SHMIPC_ENABLE_GO_ORACLE_TESTS)
     find_program(SHMIPC_GO_EXECUTABLE go)
@@ -109,6 +120,7 @@ if(SHMIPC_ENABLE_GO_ORACLE_TESTS)
             ${CMAKE_COMMAND} -E env
             SHMIPC_CPP_BUFFER_POOL_HELPER=$<TARGET_FILE:shmipc_buffer_pool_interop_helper>
             SHMIPC_CPP_QUEUE_HELPER=$<TARGET_FILE:shmipc_shared_queue_interop_helper>
+            SHMIPC_CPP_V2_HANDSHAKE_HELPER=$<TARGET_FILE:shmipc_v2_handshake_interop_helper>
             ${SHMIPC_GO_EXECUTABLE} run
             ${PROJECT_SOURCE_DIR}/tools/go_oracle/run_control_header_oracle.go
     )

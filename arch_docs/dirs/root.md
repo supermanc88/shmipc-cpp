@@ -45,6 +45,7 @@
 - `src/transport/control_socket.cpp:18-405` 实现 move-only FD、Unix/TCP connect/listen/accept 与 exact IO；本机三套配置及远端 GCC 8.5 Debug/ASan 10/10 通过。
 - `src/transport/epoll_dispatcher.cpp:68-595` 实现 edge-triggered epoll、消费式读缓冲、串行写背压、eventfd 停止与唯一关闭回调；远端 GCC 8.5 Debug/Release/ASan 11/11、专项 100 次通过。
 - 提交 `17a668e` 的 GitHub Actions run `32148166394` 中 GCC/Clang Debug/Release、ASan+UBSan、TSan 与 Go protocol oracle 七项全部成功，`S-0301` 关闭。
+- `src/core/v2_handshake.*` 组合 codec、blocking transport、mapping、pool 与 queue，实现无 ACK 的 v2 文件路径握手；远端 Go↔C++ 两方向 50/50 通过，等待云端门禁。
 
 ## Guesses & Uncertainties
 
@@ -56,4 +57,5 @@
 
 - [Go 参考实现目录](third_party__shmipc-go.md)
 - [Go oracle 目录](tools__go_oracle.md)
+- [core 目录](src__core.md)
 - [架构概要](../01_OVERVIEW.md)
