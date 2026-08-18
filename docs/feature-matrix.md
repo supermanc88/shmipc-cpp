@@ -3,6 +3,7 @@
 ## 状态定义
 
 - `已验证`：实现和规定证据均已通过。
+- `部分完成`：已有独立可验证实现，但同一计划能力仍有后续子切片。
 - `基线锁定`：上游事实、fixture 或验收方法已固定，但 C++ 功能尚未实现。
 - `未开始`：尚无可验收实现。
 
@@ -23,12 +24,14 @@
 | 跨进程原子 buffer pool 与链式互操作 | 已验证 | 双进程压力、TSan、C++↔Go 双向 20,000 字节链、run `32129419428` | 持续回归 |
 | MPSC queue 与 working flag | 已验证 | 线程/进程压力、唤醒竞争、双向 Go↔C++ 1,000 elements、run `32131088262` | 持续回归 |
 | BufferWriter/Reader 与 pin/release | 已验证 | 单片 borrowed、跨片 owned copy、RAII、Go oracle、run `32134325132` | 持续回归 |
+| Unix/TCP control socket 与 exact IO | 已验证 | partial/EOF/would-block、真实 TCP/Unix、三套本机配置、远端 GCC/ASan | 接入 epoll dispatcher |
 
 ## 产品需求
 
 | Requirement IDs | 能力 | 状态 | 首个实现切片 |
 |---|---|---|---|
 | `COMP-001` | Go↔C++ v2 双向互通 | 基线锁定 | M3 |
+| `S-0301` | Unix/TCP control transport 与 epoll | socket/exact IO 已验证；epoll 待实现 | M3 |
 | `COMP-002` | Go↔C++ v3 双向互通 | 基线锁定 | M4 |
 | `PROTO-001` | 控制头、事件、metadata 与 fallback 编解码 | 已验证 | `S-0101` |
 | `PROTO-002` | v2/v3 初始化状态机 | 未开始 | `S-0401` |

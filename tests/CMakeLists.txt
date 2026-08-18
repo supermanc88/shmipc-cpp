@@ -76,6 +76,12 @@ target_include_directories(shmipc_buffer_io_test PRIVATE ${PROJECT_SOURCE_DIR}/s
 shmipc_apply_project_options(shmipc_buffer_io_test)
 add_test(NAME shmipc.buffer_io COMMAND shmipc_buffer_io_test)
 
+add_executable(shmipc_control_socket_test control_socket_test.cpp)
+target_link_libraries(shmipc_control_socket_test PRIVATE shmipc::shmipc Threads::Threads)
+target_include_directories(shmipc_control_socket_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+shmipc_apply_project_options(shmipc_control_socket_test)
+add_test(NAME shmipc.control_socket COMMAND shmipc_control_socket_test)
+
 add_executable(shmipc_buffer_pool_interop_helper buffer_pool_interop_helper.cpp)
 target_link_libraries(shmipc_buffer_pool_interop_helper PRIVATE shmipc::shmipc)
 target_include_directories(shmipc_buffer_pool_interop_helper PRIVATE ${PROJECT_SOURCE_DIR}/src)

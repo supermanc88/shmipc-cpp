@@ -20,6 +20,8 @@ graph TD
   mapping["src/shm/shared_memory_region"]
   pool["src/shm/buffer_pool"]
   buffer_io["src/shm/buffer_io"]
+  transport["src/transport/control_socket"]
+  transport_test["tests/control_socket_test.cpp"]
   atomic["src/shm/atomic_word"]
   interop["C++/Go buffer-chain oracle"]
   queue_interop["C++/Go queue oracle"]
@@ -45,6 +47,9 @@ graph TD
   library -- contains --> buffer_layout
   buffer_layout -- reads/writes --> golden
   library -- contains --> mapping
+  library -- contains --> transport
+  transport -- owns/connects/listens --> ctrl_socket["Unix/TCP socket FD"]
+  transport_test -- calls --> transport
   mapping -- owns --> os_mapping["mmap / file FD / memfd"]
   pool -- uses --> buffer_layout
   pool -- manages --> pool_bytes["tiered free lists / allocations"]

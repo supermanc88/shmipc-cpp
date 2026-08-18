@@ -151,6 +151,15 @@
 - 边界：本层只表示共享内存 `no_buffer`，不自行切换 socket；per-Stream sticky fallback 留给 Stream 集成，以维护共享路径与控制路径的顺序。
 - 证据：`third_party/shmipc-go/buffer.go`、`src/shm/buffer_io.cpp:42-491`、`tests/buffer_io_test.cpp:34-228`、`tests/buffer_pool_interop_helper.cpp:18-85`；本机 Go oracle/ASan+UBSan/TSan 与远端 GCC 8.5 Debug/ASan 通过。
 
+### D-020：握手阻塞 IO 与事件期 nonblocking transport 分层
+
+- 状态：基础层已验证；Linux epoll 子层待完成
+- 阶段边界：复现 Go 的真实顺序——协议初始化先在 duplicated/owned FD 上 exact blocking read/write，握手完成后才设置 nonblocking 并注册 epoll。
+- 所有权：`ControlSocket`/`ControlListener` 是 move-only owner；adopt 从调用入口消费 FD。所有 descriptors 设置 close-on-exec，并抑制 socket 写入导致的 SIGPIPE。
+- IO 语义：exact helper 重试 EINTR、报告 partial progress，并区分 EOF、would-block 和其他系统错误；nonblocking 模式不在 helper 内隐式等待。
+- Unix 路径：listener 不删除未知已有路径，只有成功 bind 后才拥有 unlink 责任，防止错误配置覆盖用户文件。
+- 证据：`third_party/shmipc-go/block_io.go:25-54`、`session.go:121-177`、`event_dispatcher_linux.go:247-263`、`src/transport/control_socket.cpp:18-402`、`tests/control_socket_test.cpp:18-173`；本机 Debug/ASan+UBSan/TSan 和远端 GCC 8.5 Debug/ASan 10/10 通过。
+
 ### D-004：v2 和 v3 是两个必须分别验收的握手路径
 
 - 状态：已验证
@@ -225,3 +234,4 @@
 - 2026-08-18：提交 `4a0ef5c` 的 GitHub Actions run `32131088262` 七项作业全部成功，包含 Linux TSan、ASan+UBSan 与 Go 双向 queue oracle；`S-0204` 云端门禁关闭。
 - 2026-08-18：`S-0205` 新增 BufferWriter/Reader，确定单 slice 借用并 pin、跨 slice owned copy、byte/string/discard 不 pin，以及显式 release + RAII 回收语义；Go oracle 促使分档分配修正为持续最大档位。本机 oracle/ASan+UBSan/TSan 与远端 GCC 8.5 Debug/ASan 通过，等待云端门禁。影响文档：索引、概要、本文件、root/shm/oracle 目录、buffer IO 文件、关系图、计划、回归指南和功能矩阵。
 - 2026-08-18：提交 `c1c23f9` 的 GitHub Actions run `32134325132` 七项作业全部成功，包含 GCC/Clang Debug/Release、Linux ASan+UBSan、TSan 与生产 BufferWriter/Reader 双向 Go oracle；`S-0205` 与 M2 退出门禁关闭。影响文档：索引、概要、本文件、root/shm/oracle 目录、buffer IO 文件、项目计划、工作流和功能矩阵。
+- 2026-08-18：M3 `S-0301` 首个子切片新增 move-only Unix/TCP control socket/listener、exact blocking IO、partial/EOF/would-block 分类及 Unix 路径所有权；本机三套配置与远端 GCC 8.5 Debug/ASan 通过。证据：`src/transport/control_socket.*`、`tests/control_socket_test.cpp`；影响文档：索引、概要、本文件、root/transport 目录、control socket 文件、关系图、计划、回归指南和功能矩阵。

@@ -7,6 +7,7 @@
 - [dirs/root.md](dirs/root.md)：当前 C++ 工程根目录
 - [dirs/src__protocol.md](dirs/src__protocol.md)：C++ 控制协议生产 codec
 - [dirs/src__shm.md](dirs/src__shm.md)：C++ 共享内存显式布局访问器
+- [dirs/src__transport.md](dirs/src__transport.md)：Unix/TCP 控制 socket 与事件传输层
 - [dirs/tools__go_oracle.md](dirs/tools__go_oracle.md)：固定 Go 协议/数据平面 oracle
 - [files/src__protocol__control_codec.hpp.md](files/src__protocol__control_codec.hpp.md)：生产 codec 完整接口与错误模型
 - [files/src__shm__queue_layout.hpp.md](files/src__shm__queue_layout.hpp.md)：queue 布局常量、类型和完整接口
@@ -16,6 +17,7 @@
 - [files/src__shm__buffer_io.hpp.md](files/src__shm__buffer_io.hpp.md)：连续 Buffer IO、零拷贝与 pin/release 生命周期
 - [files/src__shm__atomic_word.hpp.md](files/src__shm__atomic_word.hpp.md)：共享 32/64 位原子 primitive
 - [files/src__shm__shared_queue.hpp.md](files/src__shm__shared_queue.hpp.md)：MPSC queue 与 working flag
+- [files/src__transport__control_socket.hpp.md](files/src__transport__control_socket.hpp.md)：move-only socket/listener 与 exact IO
 - [dirs/third_party__shmipc-go.md](dirs/third_party__shmipc-go.md)：Go 参考实现文件映射
 - [files/third_party__shmipc-go__const.go.md](files/third_party__shmipc-go__const.go.md)：协议与布局常量
 - [files/third_party__shmipc-go__protocol_event.go.md](files/third_party__shmipc-go__protocol_event.go.md)：控制协议事件格式
@@ -36,6 +38,7 @@
 | `src/` | [dirs/root.md](dirs/root.md) | ✅ | #implementation | C++ 库实现入口 |
 | `src/protocol/` | [dirs/src__protocol.md](dirs/src__protocol.md) | ✅ | #protocol #codec #safety | header、metadata 与 fallback 生产编解码 |
 | `src/shm/` | [dirs/src__shm.md](dirs/src__shm.md) | ✅ | #shared-memory #layout #mmap #zero-copy | 显式布局、mapping、pool、queue 与 Buffer IO |
+| `src/transport/` | [dirs/src__transport.md](dirs/src__transport.md) | ⏸️ | #transport #socket #epoll | Unix/TCP 基础层已完成，epoll dispatcher 待实现 |
 | `tests/` | [dirs/root.md](dirs/root.md) | ✅ | #tests | CTest 自动测试入口 |
 | `tools/go_oracle/` | [dirs/tools__go_oracle.md](dirs/tools__go_oracle.md) | ✅ | #go #oracle #golden | 固定 commit 校验与协议/数据平面 oracle |
 | `third_party/` | — | ✅ | #third-party | 外部参考实现聚合目录 |
@@ -67,6 +70,8 @@
 | `src/shm/atomic_word.hpp` | ✅ | #atomic #cross-process #seq-cst | lock-free 32/64 位共享原子 primitive |
 | `src/shm/shared_queue.hpp` | ✅ | #queue #mpsc #working | MPSC put/pop、batch 与 working flag 接口 |
 | `src/shm/shared_queue.cpp` | ✅ | #queue #atomic #interop | 本地 producer mutex、共享原子及唤醒状态机 |
+| `src/transport/control_socket.hpp` | ✅ | #transport #ownership #io | socket/listener ownership、错误和工厂接口 |
+| `src/transport/control_socket.cpp` | ✅ | #tcp #unix #posix | connect/listen/accept、exact IO 与路径清理 |
 | `tests/version_test.cpp` | ✅ | #test | 无第三方依赖的首个 library test |
 | `tests/control_header_golden_test.cpp` | ✅ | #test #protocol #golden | C++ 侧消费 control-header fixture |
 | `tests/protocol_codec_test.cpp` | ✅ | #test #protocol #negative | metadata/fallback round-trip 与异常输入测试 |
@@ -77,6 +82,7 @@
 | `tests/shared_memory_region_test.cpp` | ✅ | #test #mmap #memfd | 双视图、move、unlink 与 FD ownership 测试 |
 | `tests/buffer_pool_test.cpp` | ✅ | #test #allocator #corruption | 档位回退、角色 ownership、耗尽回收与损坏 header |
 | `tests/buffer_io_test.cpp` | ✅ | #test #zero-copy #lifetime | Writer/Reader、跨片慢路径、pin/release 与 RAII |
+| `tests/control_socket_test.cpp` | ✅ | #test #transport #socket | partial IO、EOF、would-block、TCP/Unix 与清理 |
 | `tests/buffer_pool_interop_helper.cpp` | ✅ | #test #interop #chain | Go oracle 调用的 C++ 双向 chain helper |
 | `tests/data/golden/control_headers.txt` | ✅ | #protocol #golden | 事件 0..9 的 8 字节控制头基线 |
 | `tests/data/golden/shm_metadata.txt` | ✅ | #protocol #golden | v2 文件路径与 v3 memfd metadata 基线 |
@@ -116,6 +122,7 @@
 | 批量 IO 队列 | `queue.go`, `session.go`, `protocol_manager.go` | `QUEUE-001..003` |
 | C++ queue layout accessors | `src/shm/queue_layout.*`, `tests/data/golden/queue_layout.txt` | `QUEUE-001..003` |
 | C++ MPSC queue 与 Go 互操作 | `src/shm/shared_queue.*`, `tests/shared_queue*_helper.cpp`, `tools/go_oracle/` | `QUEUE-001..003` |
+| Unix/TCP 控制连接基础层 | `src/transport/control_socket.*`, `tests/control_socket_test.cpp` | `COMP-001`, `S-0301` |
 | Stream 多路复用 | `session.go`, `stream.go` | `STREAM-001..004` |
 | 控制通道 fallback | `stream.go`, `protocol_manager.go` | `STREAM-003` |
 | 服务监听和热重启 | `listener.go`, `session_manager.go` | `API-002`, `OPS-001` |
@@ -123,7 +130,7 @@
 
 ## 分析进度
 
-- 已完成：上游架构分析、M0、M1、M2；`S-0205` 已由 run `32134325132` 的完整七项矩阵验收。
+- 已完成：上游架构分析、M0、M1、M2；M3 `S-0301` 的 Unix/TCP 与 exact IO 基础层已通过本机/远端验证。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
 - 待验证：完整 Session 的 Go↔C++ 双向互操作。BufferReader/Writer、pool/queue 原子语义和双向数据平面均已云端验证。
 
