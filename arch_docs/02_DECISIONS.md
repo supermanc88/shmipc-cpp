@@ -170,7 +170,7 @@
 
 ### D-021：v2 文件握手无 ACK，路径清理由 creator 独占
 
-- 状态：本机与远端 Linux 已验证，等待云端门禁
+- 状态：已验证；提交 `3f2db07` 的 run `32151993614` 七项门禁全部成功
 - 协议：文件模式 client 强制发送 version 2 `share_memory_by_file_path` metadata，server 读取并映射后直接完成初始化；不存在版本协商或 ACK。
 - 顺序与方向：client 先创建 buffer、再创建 queue；server 按 metadata 先映射 queue、再映射 buffer。queue 前后两半在 server 视图中交换 receive/send 方向。
 - ownership：C++ 只允许 creator 在最终析构或失败回滚时 unlink；mapper 不删除路径。该约束比上游双方可能清理同一路径更明确，且不改变 wire/layout 兼容性。
@@ -250,3 +250,4 @@
 - 2026-08-18：提交 `be2a5b6` 的 run `32139049571` 中六项门禁成功，GCC 13 Release 因 fortify 要求处理 eventfd syscall 返回值而编译失败；新增 `consume_wake/signal_wake` 显式处理返回值并重试 `EINTR`，本机 Release/TSan 与远端 GCC 8.5 Debug/Release/ASan 复验通过，等待修复提交的云端门禁。证据：`src/transport/epoll_dispatcher.cpp:68-82`；影响文档：本文件、root/transport 目录和 epoll 文件。
 - 2026-08-18：提交 `17a668e` 的 GitHub Actions run `32148166394` 七项作业及关键步骤全部成功，包含 GCC 13 Release、Linux ASan+UBSan、TSan 与 Go oracle；`S-0301` 正式关闭，M3 转入 `S-0302` v2 `/dev/shm` 握手。影响文档：索引、概要、本文件、root/transport 目录、epoll 文件、移植计划和功能矩阵。
 - 2026-08-18：`S-0302` 新增 v2 文件路径握手、move-only 共享资源聚合及细分错误模型；固定 Go overlay 在远端 Linux 完成两个方向真实 Session 初始化并连续 50/50，GCC 8.5 Debug/ASan 通过，等待 GitHub Actions 门禁。影响文档：索引、概要、本文件、core/oracle 目录、关系图、移植计划、工作流、回归指南和功能矩阵。
+- 2026-08-18：提交 `3f2db07` 的 GitHub Actions run `32151993614` 七项作业及关键步骤全部成功，包含 GCC/Clang Debug/Release、ASan+UBSan、TSan 与 Linux Go↔C++ v2 handshake oracle；`S-0302` 正式关闭。影响文档：索引、概要、本文件、root/core 目录、项目工作流、移植计划和功能矩阵。
