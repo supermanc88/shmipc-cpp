@@ -111,11 +111,15 @@
 
 ## Build & Deploy
 
-- 构建入口：`go.mod`，Go 1.20。
+- Go 参考实现构建入口：`go.mod`，Go 1.20。
+- C++ 构建入口：根目录 `CMakeLists.txt`，最低 CMake 3.16、C++17；产物 target 为 `shmipc`/`shmipc::shmipc`，支持 CTest、install/export 及 `find_package(shmipc)` package 配置。
+- C++ 质量入口：`SHMIPC_WARNINGS_AS_ERRORS`、`SHMIPC_ENABLE_ASAN`、`SHMIPC_ENABLE_UBSAN`、`SHMIPC_ENABLE_TSAN`；ASan 与 TSan 在配置阶段互斥。
 - 本地测试：`go test ./...`；上游测试实际依赖 Linux，macOS 不构成有效通过环境。
 - Linux 交叉编译基线：`GOOS=linux GOARCH=amd64 go test -c .` 已在 2026-08-18 成功。
 - 远程执行环境：SSH 别名 `23.2`（`root@10.210.23.2`），工作目录 `/home/chm/shmipc-cpp`；Kylin Linux Advanced Server V10、kernel `4.19.90-20.0stable.x86_64`、x86_64。
 - 远程工具链：CMake 3.20.6、GCC 8.5.0、Ninja 1.8.2、GNU Make 4.2.1；当前没有 Go、Clang、Docker 或 Podman。
+- C++ 骨架验证：macOS/AppleClang 的 Debug、测试、安装和 ASan+UBSan 通过；远端 Linux/GCC 8.5 的 Debug、测试、`lib64` 安装及独立 ASan 构建/测试通过。远端尚缺 `libubsan` 与 `libtsan`，因此 UBSan/TSan 仍属环境阻塞。
+- 时钟注意：本机当前比远端快约 2 分 20 秒；同步时不得保留本机文件时间戳，否则 Ninja 会反复重新生成。标准命令见 `PROJECT_WORKFLOW.md`。
 - Linux 运行基线：本机用 Go 1.25.10 交叉编译固定提交的 amd64 测试二进制，rsync 至远端后完整测试 `PASS`、退出码 0；覆盖 v2、v3/memfd、队列、Stream/Session 和热重启路径。
 - CI：`.github/workflows/tests.yaml` 在 Ubuntu 运行单测/benchmark，并在自托管 Linux 上覆盖 Go 1.21–1.25；`.github/workflows/pre_check.yaml` 运行许可证、拼写和 golangci-lint。
 - 运行目标：Linux amd64/arm64；memfd 需要 Linux 3.17+ 且控制连接必须是 Unix Domain Socket。

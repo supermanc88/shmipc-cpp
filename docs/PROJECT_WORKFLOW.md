@@ -47,13 +47,15 @@
 
 ```bash
 cd /Users/chengheming/Source/Personal/shmipc-cpp
-rsync -az \
+rsync -az --no-times --omit-dir-times \
   --exclude='.git' \
   --exclude='build' \
   --exclude='build-*' \
   --exclude='.cache' \
   ./ 23.2:/home/chm/shmipc-cpp/
 ```
+
+本机与远端时钟目前约有 2 分钟漂移。`--no-times --omit-dir-times` 是必要参数：若保留本机时间戳，Ninja 可能持续认为 `CMakeLists.txt` 或 `cmake/` 输入比刚生成的 `build.ninja` 更新，并以 `manifest 'build.ninja' still dirty` 失败。
 
 若未来确需清理远端陈旧源码，必须先比较 `rsync --dry-run --delete` 输出，再由用户确认是否执行实际删除。
 
@@ -65,9 +67,12 @@ M0 建立 CMake 后，标准 Debug 快检为：
 ssh 23.2 '
   set -eu
   cd /home/chm/shmipc-cpp
-  cmake -S . -B build/debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+  cmake -S . -B build/debug -G Ninja \
+    -DCMAKE_BUILD_TYPE=Debug \
+    -DSHMIPC_WARNINGS_AS_ERRORS=ON
   cmake --build build/debug
   ctest --test-dir build/debug --output-on-failure
+  cmake --install build/debug --prefix build/install
 '
 ```
 
@@ -83,7 +88,9 @@ ssh 23.2 '
 '
 ```
 
-Sanitizer 使用独立构建目录，不能混用编译产物：`build/asan`、`build/ubsan`、`build/tsan`。具体 CMake preset/option 在 M0 定义后更新本节。
+Sanitizer 使用独立构建目录，不能混用编译产物：`build/asan`、`build/ubsan`、`build/tsan`。可用选项为 `SHMIPC_ENABLE_ASAN`、`SHMIPC_ENABLE_UBSAN`、`SHMIPC_ENABLE_TSAN`；ASan 与 TSan 不能同时开启。
+
+远端已安装 `libasan-8.5.0-10.el8.x86_64`，独立 ASan 构建与 CTest 已通过。`libubsan` 和 `libtsan` 仍缺失，因此 ASan+UBSan 组合与 TSan 尚不能链接。未经用户授权不继续修改系统包；在环境补齐前，本机 AppleClang 的 ASan+UBSan 仅作快速检查，不能替代正式 Linux UBSan/TSan 门禁。
 
 ## 5. Go 基线与互操作
 
@@ -158,7 +165,7 @@ CMake / compiler / Go 版本
 
 ## 8. 工具链决策约束
 
-- 当前 GCC 8.5 对 C++17 支持更稳妥；若项目选择 C++20，M0 必须先提供新版 GCC/Clang 或独立可复现工具链。
+- 项目最低语言标准已确定为 C++17，与当前 GCC 8.5 对齐；升级到 C++20 必须单独评审并提供新版 GCC/Clang 或独立可复现工具链。
 - 未经明确决策，不在远端直接安装/升级系统包。
 - Clang/TSan、arm64 和云 CI 仍需后续环境；单台远程 x86_64 主机不能替代完整平台与编译器矩阵。
 - 远程基线通过证明 Linux 主路径可运行，不自动证明 C++ 实现兼容或发布完成。

@@ -16,9 +16,13 @@
 
 | 路径 | 文档 | 状态 | 标签 | 说明 |
 |---|---|---|---|---|
-| `/` | [dirs/root.md](dirs/root.md) | ✅ | #cpp-root #bootstrap | C++ 工程根目录，当前尚未建立源码骨架 |
+| `/` | [dirs/root.md](dirs/root.md) | ✅ | #cpp-root #bootstrap | C++17/CMake 最小工程骨架，S-0001 已验收 |
 | `arch_docs/` | 本索引 | ✅ | #architecture | 可持续更新的架构记忆 |
+| `cmake/` | [dirs/root.md](dirs/root.md) | ✅ | #build #install | 编译选项、Sanitizer 和 CMake package 配置 |
 | `docs/` | [移植计划](../docs/SHMIPC_CPP_PORTING_PLAN.md)、[项目工作流](../docs/PROJECT_WORKFLOW.md) | ✅ | #plan #workflow | 需求、里程碑、门禁与远程验证流程 |
+| `include/shmipc/` | [dirs/root.md](dirs/root.md) | ✅ | #public-api | 公共 C++ 头文件入口 |
+| `src/` | [dirs/root.md](dirs/root.md) | ✅ | #implementation | C++ 库实现；当前仅版本接口 |
+| `tests/` | [dirs/root.md](dirs/root.md) | ✅ | #tests | CTest 自动测试入口 |
 | `third_party/` | — | ✅ | #third-party | 外部参考实现聚合目录 |
 | `third_party/shmipc-go/` | [dirs/third_party__shmipc-go.md](dirs/third_party__shmipc-go.md) | ✅ | #go #reference #oss | 用户明确要求分析的固定上游源码 |
 | `third_party/shmipc-go/.github/` | — | ✅ | #ci | Go 测试与 lint 工作流 |
@@ -28,6 +32,11 @@
 
 | 路径 | 状态 | 标签 | 说明 |
 |---|---|---|---|
+| `CMakeLists.txt` | ✅ | #cmake #install | C++17 library、CTest、安装与 package export |
+| `cmake/ShmipcProjectOptions.cmake` | ✅ | #warnings #sanitizer | GCC/Clang/MSVC 告警策略及 ASan/UBSan/TSan 入口 |
+| `include/shmipc/version.hpp` | ✅ | #public-api #version | 当前最小公共 API 和版本声明 |
+| `src/version.cpp` | ✅ | #implementation #version | 版本 API 实现 |
+| `tests/version_test.cpp` | ✅ | #test | 无第三方依赖的首个 library test |
 | `third_party/shmipc-go/const.go` | ✅ | #protocol #constants | 协议版本、共享内存模式、默认容量和头部尺寸 |
 | `third_party/shmipc-go/protocol_event.go` | ✅ | #wire-format | 8 字节大端控制头和事件类型 |
 | `third_party/shmipc-go/protocol_initializer.go` | ✅ | #handshake | v2/v3 初始化状态机 |
@@ -58,7 +67,7 @@
 
 ## 分析进度
 
-- 已完成：顶层模块、协议头、握手、共享内存布局、队列、buffer 生命周期、Session/Stream 主链路、公开 API、测试与 CI 基线。
+- 已完成：顶层模块、协议头、握手、共享内存布局、队列、buffer 生命周期、Session/Stream 主链路、公开 API、测试与 CI 基线；C++17/CMake 最小骨架已在 macOS 与远端 Linux/GCC 8.5 验证。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
 - 待验证：C++ 与 Go 的双向互操作、共享内存原子内存序、`bufferList.counter` 偏移差异。固定 Go 基线已在远程 Linux x86_64 主机完整通过。
 

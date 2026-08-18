@@ -6,7 +6,7 @@
 |---|---|
 | 项目类型 | Go 到 C++ 的跨语言、跨运行时重实现 |
 | 参考实现 | `third_party/shmipc-go` commit `55c241eea321071278d1ee7f7c46292d23e50a5b` |
-| 当前阶段 | 启动与基线审计完成，远程 Linux 基线已验证，待继续确认产品决策 |
+| 当前阶段 | M0 执行中；S-0001 C++17/CMake 骨架已验收，开始 S-0002 Linux CI/Sanitizer 门禁 |
 | 已确认目标 | 在 Linux 上提供现代 C++ 共享内存 IPC 库，并与固定 Go 实现双向互通；Go 仅用于开发验收 |
 | 流程依据 | 用户提供的《软件项目端到端标准工作流程》 |
 | 架构依据 | [上游架构概要](../arch_docs/01_OVERVIEW.md) 与 [决策/风险](../arch_docs/02_DECISIONS.md) |
@@ -48,7 +48,7 @@
 
 ## 5. 需求矩阵
 
-生命周期初始均为“未开始”；决策项确认后才进入实现。
+除下述明确状态外，需求生命周期初始均为“未开始”；决策项确认后才进入实现。
 
 | ID | 要求 | 目标策略 | 优先级 | 验收标准 |
 |---|---|---|---|---|
@@ -83,7 +83,7 @@
 
 1. 兼容目标：**已确认** Go/C++ 双向互通；它是开发和验收 oracle，不是部署依赖。
 2. 平台节奏：默认 Linux x86_64 为首平台，arm64 在核心完成后加入同版本。
-3. C++ 基线：远程 GCC 8.5 使 C++17 风险最低；若选择 C++20，需要先明确升级/独立工具链方案。
+3. C++ 基线：**已确认 C++17**，与远程 GCC 8.5 对齐；未来升级 C++20 需独立决策和工具链方案。
 4. 公共 API：确定异常、错误码或 `expected` 风格，以及 buffer view 的所有权表达。
 5. 发布形态：静态/动态库、namespace、安装布局和是否接入 Conan/vcpkg。
 6. 1.0 范围：确认热重启、异步 callback、SessionManager 是否必须随首版发布。
@@ -144,7 +144,7 @@ tools/
 
 切片：
 
-- `S-0001`：CMake 工程、library target、测试 target、格式/静态检查。
+- `S-0001`（已验收）：CMake 工程、library target、测试 target、编译告警和 `git diff --check` 门禁。
 - `S-0002`：Linux CI，覆盖 Debug/Release 和 x86_64；建立 ASan/UBSan/TSan 入口。
 - `S-0003`：Go oracle 与固定 commit 校验，生成首个 control-header golden。
 
@@ -285,12 +285,14 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-BASE-002`：macOS arm64 `go test ./...` 的平台限制记录。
 - `E-BASE-003`：Linux/amd64 `go test -c` 成功生成 ELF 测试二进制。
 - `E-BASE-004`：交叉编译的固定 Go 基线在 `10.210.23.2` 完整测试 `PASS`、退出码 0。
+- `E-M0-001`：C++17 骨架在 macOS/AppleClang 完成 Debug、CTest、install 与 ASan+UBSan；在远端 Linux/GCC 8.5 完成 Debug、CTest 与 `lib64` install。
+- `E-M0-002`：用户安装 `libasan-8.5.0` 后，远端独立 ASan 构建和 CTest 通过；UBSan/TSan 仍因缺失对应 `/usr/lib64` runtime 而阻塞。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. Go/C++ 双向互通已经确认；按第 6 节继续确认目标平台节奏和 C++ 标准。
-2. 决策确认后建立 `docs/feature-matrix.md`、首批 ADR 和 `docs/regression-test-guide.md`。
-3. 执行 M0，产生最小 CMake/library/test/CI 骨架和第一个由 Go oracle 生成的协议 golden。
+1. 提交已验收的 `S-0001` C++17/CMake/library/test/install 骨架。
+2. 执行 `S-0002`：建立 Linux CI、Debug/Release 与 Sanitizer 门禁。
+3. 建立 `docs/feature-matrix.md`、首批 ADR 和 `docs/regression-test-guide.md`，随后进入 `S-0003` Go oracle/control-header golden。
 4. M0 验收后再进入共享布局实现，不跨越 M1 的 counter offset 决策门。

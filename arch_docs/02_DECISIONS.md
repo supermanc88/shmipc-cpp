@@ -32,6 +32,13 @@
 - 验证证据：Go 1.25.10 交叉编译的固定上游测试二进制在远端完整执行 `PASS`，退出码 0。
 - 工作流：[docs/PROJECT_WORKFLOW.md](../docs/PROJECT_WORKFLOW.md)。
 
+### D-006：最低语言标准采用 C++17
+
+- 状态：已接受
+- 理由：用户同意从远程现有工具链直接启动；GCC 8.5 对 C++17 的支持成熟，无需先改动目标机系统工具链。
+- 影响：公共 API 和内部实现不得依赖 C++20；后续若升级最低标准，必须单独评审编译器矩阵、ABI 和消费端影响。
+- 验证：最小 library/test/install 骨架已在 AppleClang 与远端 GCC 8.5 下完成配置、编译和测试。
+
 ### D-004：v2 和 v3 是两个必须分别验收的握手路径
 
 - 状态：已验证
@@ -68,14 +75,21 @@
 - 事实：控制 header 有 magic/version/type 检查，但共享内存 metadata 和部分链式 offset 读取依赖对端可信；`extractShmMetadata` 未完整验证 body 边界。
 - 对策：C++ 接收端对 length、offset、加法溢出、循环链、最大 slice 数和文件大小做显式检查；兼容正常输入，不继承不安全行为。
 
+### R-006：远端时钟漂移与部分 sanitizer 运行库缺失
+
+- 事实：2026-08-18 本机时钟比远端快约 2 分 20 秒；保留时间戳的 rsync 会使 Ninja 持续判定 CMake 输入更新。用户随后安装 `libasan-8.5.0-10.el8.x86_64`，独立 ASan 构建和 CTest 已通过；`libubsan` 与 `libtsan` 仍未安装。
+- 影响：标准同步必须使用 `--no-times --omit-dir-times`；远端 Debug 与 ASan 可作为当前门禁，UBSan/TSan 在运行库补齐前不能作为 Linux 通过证据。
+- 对策：不擅自继续安装系统包；保留本机 AppleClang ASan+UBSan 快检，后续补齐远端 libubsan/libtsan 或引入独立工具链。
+
 ## 需要用户逐项确认的产品决策
 
 1. 首版只支持 Linux x86_64，还是 x86_64 与 arm64 同期？计划默认先 x86_64、随后同里程碑补 arm64。
-2. C++ 最低标准采用 C++17 还是 C++20？远程 GCC 8.5 使 C++17 风险最低；采用 C++20 需要先升级或提供独立工具链。
-3. 首版是否包含 SessionManager、热重启、异步 callback 和 `net.Listener` 等价适配？计划将其放在核心互通之后，但仍纳入 1.0 范围。
-4. 发布形态是源码库、静态库、动态库，还是同时提供？这会影响 ABI、安装和包管理策略。
+2. 首版是否包含 SessionManager、热重启、异步 callback 和 `net.Listener` 等价适配？计划将其放在核心互通之后，但仍纳入 1.0 范围。
+3. 发布形态是源码库、静态库、动态库，还是同时提供？这会影响 ABI、安装和包管理策略。
 
 ## 修订历史
 
 - 2026-08-18：基于上游 commit `55c241e` 建立初始架构分析、验证平台基线并识别布局风险。
 - 2026-08-18：确认 Go↔C++ 双向互操作为开发验收目标；新增并验证远程 Linux x86_64 环境，固定 Go 基线完整测试通过。影响文档：`00_INDEX.md`、`01_OVERVIEW.md`、`02_DECISIONS.md`、`docs/SHMIPC_CPP_PORTING_PLAN.md`、`docs/PROJECT_WORKFLOW.md`。
+- 2026-08-18：接受 C++17，建立 CMake/library/test/install 骨架；AppleClang 与远端 GCC 8.5 常规门禁通过，并记录远端时钟漂移与 sanitizer 运行库缺失。影响代码：`CMakeLists.txt`、`cmake/`、`include/`、`src/`、`tests/`；影响文档：本文件、`00_INDEX.md`、`01_OVERVIEW.md`、`dirs/root.md`、`graphs/relations.md` 及项目计划/工作流。
+- 2026-08-18：用户安装远端 `libasan` 后，GCC 8.5 独立 ASan 构建与 `shmipc.version` 测试通过；修正原“远端 sanitizer 全部缺失”为“ASan 可用，UBSan/TSan 仍缺运行库”。证据：`CMakeLists.txt:16-18` 定义三个独立选项，`cmake/ShmipcProjectOptions.cmake:28-50` 组装 sanitizer flags；影响文档：本文件、`01_OVERVIEW.md`、`dirs/root.md`、`docs/PROJECT_WORKFLOW.md`、`docs/SHMIPC_CPP_PORTING_PLAN.md`。

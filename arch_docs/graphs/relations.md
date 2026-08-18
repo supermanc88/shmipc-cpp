@@ -1,5 +1,22 @@
 # 架构关系图
 
+## 当前 C++ 骨架依赖
+
+```mermaid
+graph TD
+  consumer["consumer / version_test.cpp"]
+  public["include/shmipc/version.hpp"]
+  library["shmipc library"]
+  implementation["src/version.cpp"]
+  package["shmipcConfig.cmake / shmipcTargets.cmake"]
+
+  consumer -- includes --> public
+  consumer -- links --> library
+  implementation -- implements --> public
+  library -- contains --> implementation
+  package -- exports --> library
+```
+
 ## 运行时边界
 
 ```mermaid
