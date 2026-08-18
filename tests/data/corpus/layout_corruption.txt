@@ -1,0 +1,10 @@
+# case expected_error
+truncated_region truncated_region
+oversized_capacity truncated_region
+size_overflow size_overflow
+misaligned_head invalid_offset
+out_of_range_next invalid_offset
+cycle cyclic_chain
+tail_mismatch invalid_tail
+slice_capacity invalid_slice_capacity
+invalid_data_range invalid_field

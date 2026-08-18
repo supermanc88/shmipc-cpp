@@ -39,6 +39,7 @@
 - arm64 queue manager 总映射长度必须为 16 的倍数，与 Go 映射检查一致。
 - 当前 helper 是普通 byte accessor，不提供跨进程原子性；原子访问和内存序属于 `S-0204`。
 - buffer slice 必须满足 `data_start <= capacity` 且 `size <= capacity - data_start`。
+- 静态链 validator 最多访问 `capacity` 个节点；offset 必须落在 region 内并按 slice stride 对齐，终止节点必须等于 tail。
 
 ## Evidence
 
@@ -51,6 +52,7 @@
 - `src/shm/buffer_layout.cpp:82-225`：buffer checked size 与三类 header accessors。
 - `tests/buffer_layout_test.cpp:50-177`：buffer golden 与错误路径。
 - `tools/go_oracle/control_header_oracle_test.gotxt:250-344`：真实 creator/mapper pointer offsets 及独立 counter 行为。
+- `src/shm/buffer_layout.cpp:199-240` 与 `tests/data/corpus/layout_corruption.txt`：有界链验证和 9 类损坏输入。
 
 ## Guesses & Uncertainties
 

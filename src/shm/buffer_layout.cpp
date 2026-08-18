@@ -70,6 +70,14 @@ const char* to_string(BufferLayoutError error) noexcept {
             return "size overflow";
         case BufferLayoutError::truncated_region:
             return "truncated region";
+        case BufferLayoutError::invalid_offset:
+            return "invalid offset";
+        case BufferLayoutError::cyclic_chain:
+            return "cyclic chain";
+        case BufferLayoutError::invalid_tail:
+            return "invalid tail";
+        case BufferLayoutError::invalid_slice_capacity:
+            return "invalid slice capacity";
     }
     return "unknown buffer layout error";
 }
@@ -186,6 +194,49 @@ BufferListHeaderResult read_buffer_list_header(const std::uint8_t* memory,
         return {{}, BufferLayoutError::invalid_field};
     }
     return {header, BufferLayoutError::none};
+}
+
+BufferLayoutError validate_buffer_list_chain(const std::uint8_t* memory,
+                                             std::size_t size) noexcept {
+    const auto decoded = read_buffer_list_header(memory, size);
+    if (!decoded) {
+        return decoded.error;
+    }
+    const auto& header = decoded.value;
+    const auto stride = static_cast<std::size_t>(header.capacity_per_buffer) +
+                        buffer_slice_header_size;
+    const auto region_bytes = static_cast<std::size_t>(header.capacity) * stride;
+    const auto is_valid_offset = [stride, region_bytes](std::uint32_t offset) {
+        return static_cast<std::size_t>(offset) < region_bytes &&
+               static_cast<std::size_t>(offset) % stride == 0U;
+    };
+    if (!is_valid_offset(header.head) || !is_valid_offset(header.tail)) {
+        return BufferLayoutError::invalid_offset;
+    }
+
+    auto current = header.head;
+    for (std::uint32_t visited = 0; visited < header.capacity; ++visited) {
+        const auto slice_offset =
+            buffer_list_header_size + static_cast<std::size_t>(current);
+        const auto slice = read_buffer_slice_header(memory + slice_offset,
+                                                    size - slice_offset);
+        if (!slice) {
+            return slice.error;
+        }
+        if (slice.value.capacity != header.capacity_per_buffer) {
+            return BufferLayoutError::invalid_slice_capacity;
+        }
+        constexpr std::uint8_t has_next_flag = 1U;
+        if ((slice.value.flags & has_next_flag) == 0U) {
+            return current == header.tail ? BufferLayoutError::none
+                                          : BufferLayoutError::invalid_tail;
+        }
+        if (!is_valid_offset(slice.value.next_offset)) {
+            return BufferLayoutError::invalid_offset;
+        }
+        current = slice.value.next_offset;
+    }
+    return BufferLayoutError::cyclic_chain;
 }
 
 BufferLayoutError write_buffer_slice_header(std::uint8_t* memory, std::size_t size,

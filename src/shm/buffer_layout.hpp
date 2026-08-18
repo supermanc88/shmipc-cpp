@@ -21,6 +21,10 @@ enum class BufferLayoutError {
     invalid_field,
     size_overflow,
     truncated_region,
+    invalid_offset,
+    cyclic_chain,
+    invalid_tail,
+    invalid_slice_capacity,
 };
 
 struct BufferManagerHeader {
@@ -78,6 +82,8 @@ using BufferSliceHeaderResult = BufferLayoutResult<BufferSliceHeader>;
     std::uint8_t* memory, std::size_t size,
     const BufferListHeader& header) noexcept;
 [[nodiscard]] BufferListHeaderResult read_buffer_list_header(
+    const std::uint8_t* memory, std::size_t size) noexcept;
+[[nodiscard]] BufferLayoutError validate_buffer_list_chain(
     const std::uint8_t* memory, std::size_t size) noexcept;
 
 [[nodiscard]] BufferLayoutError write_buffer_slice_header(

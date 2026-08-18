@@ -65,3 +65,5 @@ ssh 23.2 '
 - `fallback_data.txt`：`ce97f80676a92066b62b0127d0ae5561ed7be2bc8035c88c98fc79db82b77f94`
 - `queue_layout.txt`：`3c2dba47b214fe158582c7cb31ec9b74fa060819d848a87b253c1cf83d721697`
 - `buffer_layout.txt`：`83a090638c0096c7619c66f22b6621ae6da6b77343150bacbfde4a99d6b6af5b`
+
+固定损坏布局 corpus 位于 `tests/data/corpus/layout_corruption.txt`，SHA-256 为 `342f559d8106b538e8b41bc562041bb9dbaeb34b3e969275daccc1fc560149e5`。测试从合法三节点链应用每条变异，validator 必须返回 corpus 指定错误且不得越界或无限循环。

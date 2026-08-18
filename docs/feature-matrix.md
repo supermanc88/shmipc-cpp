@@ -29,7 +29,7 @@
 | `PROTO-002` | v2/v3 初始化状态机 | 未开始 | `S-0401` |
 | `SHM-001` | Queue/buffer manager/slice 共享布局 | 显式 byte layout 已验证，待云端 | `S-0102..0103` |
 | `SHM-002..003` | 分配回收与零拷贝生命周期 | 未开始 | M2 |
-| `SHM-004` | 损坏 offset/length 防护 | 基础 header 边界已实现，corpus 待补 | `S-0104` |
+| `SHM-004` | 损坏 offset/length 防护 | 9 类固定 corpus 本机/远端已验证，待云端 | `S-0104` |
 | `QUEUE-001` | MPSC queue put/pop | 布局访问器已验证，并发算法未开始 | `S-0102`/`S-0204` |
 | `QUEUE-002` | working flag 与批量唤醒 | 字段布局已验证，状态算法未开始 | `S-0204` |
 | `QUEUE-003` | amd64/arm64 原子对齐 | byte layout 已验证，原子访问待实现 | `S-0102`/`S-0204` |

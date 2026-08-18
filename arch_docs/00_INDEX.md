@@ -63,6 +63,7 @@
 | `tests/data/golden/fallback_data.txt` | ✅ | #protocol #golden | fallback stream/status/payload 基线 |
 | `tests/data/golden/queue_layout.txt` | ✅ | #queue #golden #layout | amd64/arm64 queue header 与 element byte 基线 |
 | `tests/data/golden/buffer_layout.txt` | ✅ | #buffer #golden #layout | manager/list/slice offsets 与角色 counter 基线 |
+| `tests/data/corpus/layout_corruption.txt` | ✅ | #buffer #corpus #safety | 9 类截断/溢出/offset/链损坏输入 |
 | `tools/go_oracle/run_control_header_oracle.go` | ✅ | #go #oracle | 固定 commit 检查与无侵入 overlay runner |
 | `third_party/shmipc-go/const.go` | ✅ | #protocol #constants | 协议版本、共享内存模式、默认容量和头部尺寸 |
 | `third_party/shmipc-go/protocol_event.go` | ✅ | #wire-format | 8 字节大端控制头和事件类型 |
@@ -87,7 +88,7 @@
 | 控制协议 codec 与 golden/oracle | `src/protocol/`, `tools/go_oracle/`, `tests/data/golden/` | `PROTO-001` |
 | v3 `memfd` + SCM_RIGHTS | `protocol_initializer.go`, `protocol_manager.go`, `block_io.go` | `COMP-002`, `PLAT-002` |
 | 共享内存分配与回收 | `buffer_manager.go`, `buffer_slice.go`, `buffer.go` | `SHM-001..004` |
-| C++ buffer layout accessors | `src/shm/buffer_layout.*`, `tests/data/golden/buffer_layout.txt` | `SHM-001`, `SHM-004` |
+| C++ buffer layout 与损坏链验证 | `src/shm/buffer_layout.*`, `tests/data/golden/buffer_layout.txt`, `tests/data/corpus/layout_corruption.txt` | `SHM-001`, `SHM-004` |
 | 批量 IO 队列 | `queue.go`, `session.go`, `protocol_manager.go` | `QUEUE-001..003` |
 | C++ queue layout accessors | `src/shm/queue_layout.*`, `tests/data/golden/queue_layout.txt` | `QUEUE-001..003` |
 | Stream 多路复用 | `session.go`, `stream.go` | `STREAM-001..004` |

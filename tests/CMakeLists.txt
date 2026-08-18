@@ -46,6 +46,7 @@ target_compile_definitions(
     shmipc_buffer_layout_test
     PRIVATE
         SHMIPC_BUFFER_LAYOUT_GOLDEN_PATH="${CMAKE_CURRENT_SOURCE_DIR}/data/golden/buffer_layout.txt"
+        SHMIPC_LAYOUT_CORRUPTION_CORPUS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/data/corpus/layout_corruption.txt"
 )
 add_test(NAME shmipc.buffer_layout COMMAND shmipc_buffer_layout_test)
 

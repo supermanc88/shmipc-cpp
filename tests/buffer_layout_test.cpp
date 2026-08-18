@@ -47,6 +47,11 @@ T read_native(const std::vector<std::uint8_t>& memory, std::size_t offset) {
     return value;
 }
 
+template <typename T>
+void write_native(std::vector<std::uint8_t>& memory, std::size_t offset, T value) {
+    std::memcpy(memory.data() + offset, &value, sizeof(value));
+}
+
 bool test_manager_row(const LayoutRow& row) {
     if (row.total_size != shmipc::shm::buffer_manager_header_size ||
         row.offsets.at("list_count") != 0U ||
@@ -177,6 +182,113 @@ bool test_errors() {
            BufferLayoutError::invalid_field;
 }
 
+std::vector<std::uint8_t> make_valid_chain() {
+    const auto region_size = shmipc::shm::buffer_list_region_size(3, 4);
+    if (!region_size) {
+        return {};
+    }
+    std::vector<std::uint8_t> memory(region_size.value, 0);
+    if (shmipc::shm::write_buffer_list_header(
+            memory.data(), memory.size(), {3, 3, 0, 48, 4, 0, 0}) !=
+        BufferLayoutError::none) {
+        return {};
+    }
+    const std::size_t first = shmipc::shm::buffer_list_header_size;
+    const std::size_t second = first + 24U;
+    const std::size_t third = second + 24U;
+    if (shmipc::shm::write_buffer_slice_header(
+            memory.data() + first, memory.size() - first, {4, 0, 0, 24, 1}) !=
+            BufferLayoutError::none ||
+        shmipc::shm::write_buffer_slice_header(
+            memory.data() + second, memory.size() - second, {4, 0, 0, 48, 1}) !=
+            BufferLayoutError::none ||
+        shmipc::shm::write_buffer_slice_header(
+            memory.data() + third, memory.size() - third, {4, 0, 0, 0, 0}) !=
+            BufferLayoutError::none) {
+        return {};
+    }
+    return memory;
+}
+
+BufferLayoutError expected_error(const std::string& name) {
+    if (name == "truncated_region") {
+        return BufferLayoutError::truncated_region;
+    }
+    if (name == "invalid_offset") {
+        return BufferLayoutError::invalid_offset;
+    }
+    if (name == "size_overflow") {
+        return BufferLayoutError::size_overflow;
+    }
+    if (name == "cyclic_chain") {
+        return BufferLayoutError::cyclic_chain;
+    }
+    if (name == "invalid_tail") {
+        return BufferLayoutError::invalid_tail;
+    }
+    if (name == "invalid_slice_capacity") {
+        return BufferLayoutError::invalid_slice_capacity;
+    }
+    return BufferLayoutError::invalid_field;
+}
+
+bool test_corruption_corpus() {
+    std::ifstream corpus(SHMIPC_LAYOUT_CORRUPTION_CORPUS_PATH);
+    std::string line;
+    std::size_t rows = 0;
+    while (std::getline(corpus, line)) {
+        if (line.empty() || line.front() == '#') {
+            continue;
+        }
+        std::string mutation;
+        std::string error_name;
+        std::string trailing;
+        std::istringstream fields(line);
+        if (!(fields >> mutation >> error_name) || (fields >> trailing)) {
+            return false;
+        }
+        if (mutation == "size_overflow") {
+            if (shmipc::shm::buffer_list_region_size(0xffffffffU, 0xffffffffU)
+                    .error != expected_error(error_name)) {
+                return false;
+            }
+            ++rows;
+            continue;
+        }
+        auto memory = make_valid_chain();
+        if (memory.empty() ||
+            shmipc::shm::validate_buffer_list_chain(memory.data(), memory.size()) !=
+                BufferLayoutError::none) {
+            return false;
+        }
+        if (mutation == "truncated_region") {
+            memory.pop_back();
+        } else if (mutation == "oversized_capacity") {
+            write_native<std::uint32_t>(memory, 4U, 4U);
+        } else if (mutation == "misaligned_head") {
+            write_native<std::uint32_t>(memory, 8U, 1U);
+        } else if (mutation == "out_of_range_next") {
+            write_native<std::uint32_t>(memory, 48U, 72U);
+        } else if (mutation == "cycle") {
+            write_native<std::uint32_t>(memory, 72U, 0U);
+        } else if (mutation == "tail_mismatch") {
+            write_native<std::uint8_t>(memory, 76U, 0U);
+        } else if (mutation == "slice_capacity") {
+            write_native<std::uint32_t>(memory, 60U, 8U);
+        } else if (mutation == "invalid_data_range") {
+            write_native<std::uint32_t>(memory, 64U, 5U);
+        } else {
+            return false;
+        }
+        if (shmipc::shm::validate_buffer_list_chain(memory.data(), memory.size()) !=
+            expected_error(error_name)) {
+            return false;
+        }
+        ++rows;
+    }
+    return rows == 9U;
+}
+
 }  // namespace
 
 int main() {
@@ -186,6 +298,10 @@ int main() {
     }
     if (!test_errors()) {
         std::cerr << "buffer layout error-path test failed\n";
+        return 1;
+    }
+    if (!test_corruption_corpus()) {
+        std::cerr << "buffer layout corruption corpus failed\n";
         return 1;
     }
     return 0;

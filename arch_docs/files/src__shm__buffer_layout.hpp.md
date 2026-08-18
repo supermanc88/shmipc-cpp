@@ -25,6 +25,10 @@
 - `invalid_field`
 - `size_overflow`
 - `truncated_region`
+- `invalid_offset`
+- `cyclic_chain`
+- `invalid_tail`
+- `invalid_slice_capacity`
 
 ## Structs and Aliases（全量）
 
@@ -45,6 +49,7 @@
 - `buffer_list_region_size(uint32_t, uint32_t)`：checked 计算 `36 + capacity * (20 + capacity_per_buffer)`。
 - `write_buffer_manager_header(...)` / `read_buffer_manager_header(...)`：manager header 访问与 used-region 校验。
 - `write_buffer_list_header(...)` / `read_buffer_list_header(...)`：list header 访问、容量和 region 校验。
+- `validate_buffer_list_chain(...)`：有界遍历 free-list，校验 offset/stride、slice capacity、tail 和 cycle。
 - `write_buffer_slice_header(...)` / `read_buffer_slice_header(...)`：slice header 访问并校验 data range。
 
 ## Invariants
@@ -54,12 +59,13 @@
 - slice 必须满足 `data_start <= capacity` 且 `size <= capacity - data_start`。
 - flags 只读写 offset 16 的低字节，offset 17..19 保留。
 - 当前 `memcpy` accessors 不保证与并发 Go 原子操作互操作。
+- 链 validator 用于映射/静态完整性检查，不应在对端并发修改链时当作一致性快照。
 
 ## Evidence
 
-- 声明：`src/shm/buffer_layout.hpp:8-87`。
-- 实现：`src/shm/buffer_layout.cpp:49-225`。
-- C++ 测试：`tests/buffer_layout_test.cpp:50-177`。
+- 声明：`src/shm/buffer_layout.hpp:8-93`。
+- 实现：`src/shm/buffer_layout.cpp:49-277`。
+- C++ 测试：`tests/buffer_layout_test.cpp:50-307`。
 - Go layout/行为 probe：`tools/go_oracle/control_header_oracle_test.gotxt:250-344`。
 - 上游演进：commit `8ab38be` 将两个 uint64 push/pop counters 替换为角色相关 int32 counter。
 

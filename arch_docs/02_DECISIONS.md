@@ -89,6 +89,15 @@
 - 布局：manager/list/slice header 分别为 8/36/20 字节；slice flags 只使用 offset 16 的低字节。
 - 证据：`third_party/shmipc-go/buffer_manager.go:341-415,417-459,604-613`、commit `8ab38be` diff、`tools/go_oracle/control_header_oracle_test.gotxt:250-344`、`src/shm/buffer_layout.cpp:77-225`。
 
+### D-013：损坏 free-list 使用有界遍历和确定错误分类
+
+- 状态：本机与远端已验证，待批次云端证据
+- 决策：映射后的静态完整性检查最多访问 `capacity` 个节点；head/tail/next 必须在 buffer region 内且按 `20 + capacity_per_buffer` stride 对齐。
+- 终止条件：无 next flag 的节点必须等于 header tail；遍历 capacity 个节点仍未终止则分类为 cycle。
+- slice 条件：每个节点 capacity 必须等于 list capacity-per-buffer，且 `data_start + size` 用减法形式检查以避免溢出。
+- 边界：validator 不提供并发快照语义，不应在对端正修改 free-list 时运行；并发算法另行实现和验证。
+- 证据：`src/shm/buffer_layout.cpp:199-240`、`tests/data/corpus/layout_corruption.txt`、`tests/buffer_layout_test.cpp:185-289`。
+
 ### D-004：v2 和 v3 是两个必须分别验收的握手路径
 
 - 状态：已验证
@@ -124,7 +133,8 @@
 
 - 事实：控制 header 有 magic/version/type 检查，但共享内存 metadata 和部分链式 offset 读取依赖对端可信；`extractShmMetadata` 未完整验证 body 边界。
 - 当前缓解：`S-0101` 已对控制帧 length、magic、version、event、body 截断、尾随字节、metadata 字段长度和 64 MiB 默认上限做显式检查。
-- 剩余对策：buffer 共享内存 offset、循环链、最大 slice 数和文件大小仍须在 `S-0104` 加固；兼容正常输入，不继承不安全行为。
+- 当前缓解：`S-0104` 已增加 checked region size、有界链遍历和 9 类固定变异，覆盖截断、声明超长、size overflow、未对齐/越界 offset、cycle、tail/capacity/data-range 不一致。
+- 剩余对策：真实 mmap 文件大小、跨多个 buffer list 的 manager 边界和运行期链并发仍在 M2 集成层继续验证。
 
 ### R-006：远端时钟漂移与部分 sanitizer 运行库缺失
 
@@ -152,3 +162,4 @@
 - 2026-08-18：新增 `S-0101` 生产 control codec，覆盖 header、事件 0..9、v2/v3 metadata 与 fallback；固定 Go 编码器和 C++ round-trip 共用三份 golden，异常输入测试覆盖截断、非法字段、错误事件、尾随字节与帧上限。本机 AppleClang Debug/ASan+UBSan 及远端 GCC 8.5 Debug/ASan 通过。证据：`src/protocol/control_codec.*`、`tests/protocol_codec_test.cpp`、`tools/go_oracle/control_header_oracle_test.gotxt:13-192`；影响文档：索引、概要、本文件、root/protocol/oracle 目录、关系图、计划、工作流、回归指南和功能矩阵。
 - 2026-08-18：提交 `603933e` 的 GitHub Actions run `32122127419` 七项作业全部成功，`S-0101` 转为已验证；新增 `S-0102` queue 显式布局访问器与双架构 golden，Go oracle 分别在 arm64/amd64 路径通过，C++ 本机与远端 GCC 8.5 Debug/ASan 通过。证据：`src/shm/queue_layout.*`、`tests/data/golden/queue_layout.txt`、`tests/queue_layout_test.cpp`；影响文档：索引、概要、本文件、root/shm/oracle 目录、关系图、计划、工作流、回归指南和功能矩阵。
 - 2026-08-18：通过提交历史和 Go creator/mapper 双视图实验关闭 `bufferList.counter +20/+24` 不确定项，确认其为 arm64 兼容后角色隔离的 outstanding counters；新增 manager/list/slice C++ 显式布局访问器。证据：上游 commit `8ab38be`、`tools/go_oracle/control_header_oracle_test.gotxt:250-344`、`src/shm/buffer_layout.*`、`tests/buffer_layout_test.cpp`；影响文档：索引、概要、本文件、root/shm/oracle 目录、关系图、计划、工作流、回归指南和功能矩阵。
+- 2026-08-18：新增有界 buffer free-list validator 和 9 类固定损坏输入 corpus，确定性拒绝截断、溢出、非法 offset、循环、错误 tail、slice capacity 与 data range。证据：`src/shm/buffer_layout.cpp:199-240`、`tests/data/corpus/layout_corruption.txt`、`tests/buffer_layout_test.cpp:185-289`；影响文档：索引、本文件、shm 目录/文件、计划、回归指南和功能矩阵。
