@@ -10,7 +10,7 @@ ctest --test-dir build/debug --output-on-failure
 git diff --check
 ```
 
-## Go control-protocol oracle
+## Go 协议与数据平面 oracle
 
 需要 Go 1.20+、Git 和已初始化的 submodule：
 
@@ -18,7 +18,7 @@ git diff --check
 go run tools/go_oracle/run_control_header_oracle.go
 ```
 
-运行器首先要求 `third_party/shmipc-go` HEAD 严格等于 `55c241eea321071278d1ee7f7c46292d23e50a5b`，然后通过临时 overlay 把 oracle test 注入上游 package。它直接调用上游 header、共享内存 metadata 和 fallback 编码器，不会修改 submodule 工作区。
+运行器首先要求 `third_party/shmipc-go` HEAD 严格等于 `55c241eea321071278d1ee7f7c46292d23e50a5b`，然后通过临时 overlay 把 oracle test 注入上游 package。它直接调用上游控制协议、buffer pool 和 queue，并用 C++ helpers 做双向数据平面验证，不会修改 submodule 工作区。
 
 也可通过 CTest 运行完整本机集合：
 
@@ -54,10 +54,11 @@ ssh 23.2 '
 - `shmipc.control_header_golden`：生产 codec 完整消费 10 类控制事件 fixture，字段与大端字节一致。
 - `shmipc.protocol_codec`：metadata/fallback 正反向 golden 一致，并拒绝截断、尾随字节、非法 magic/version/type、错误 payload 事件、超长字段和超过配置上限的帧。
 - `shmipc.queue_layout`：C++ 同时验证 amd64/arm64 header offsets、12 字节 element、region size、越界 slot、截断和 arm64 manager 对齐限制。
+- `shmipc.shared_queue`：4 producer/单 consumer 并发顺序、full/empty、batch、父子进程环绕及 working flag 竞争窗口。
 - `shmipc.buffer_layout`：manager/list/slice offsets、region size、creator/mapper counter 字段及截断/非法字段检查。
 - `shmipc.shared_memory_region`：file 双视图、move/unlink 生命周期，以及 Linux memfd 的 borrowed/transferred FD 所有权；非 Linux 明确验证 unsupported。
 - `shmipc.buffer_pool`：tier 配置与排序、原子分配回收、父子进程并发压力、双向 chain publish/adopt、角色净 counter，以及损坏 head/tail/size/used-length 防护。
-- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用 C++ helper 双向传递 20,000 字节 slice chain，验证 C++→Go 与 Go→C++ 的读取、回收、free-list 和角色净 counter。
+- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用 C++ helpers 双向传递 20,000 字节 slice chain 和各 1,000 个 queue elements，验证 payload、回收、free-list、角色净 counter、queue 方向翻转及 working flag。
 - 任一 commit mismatch、缺行、重复/错序事件或字节差异均为失败，不允许自动更新 golden 后绕过评审。
 
 当前 golden 的 SHA-256：

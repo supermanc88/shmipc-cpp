@@ -2,7 +2,7 @@
 
 ## Summary
 
-当前仓库已建立 C++17/CMake 可验证骨架，并已加入控制协议 codec、共享布局、RAII mapping 和跨进程原子分级 buffer pool。buffer pool 的链式 slice 已完成 Go↔C++ 双向 oracle；并发 queue 算法尚未实现。
+当前仓库已建立 C++17/CMake 可验证骨架，并已加入控制协议 codec、共享布局、RAII mapping、跨进程原子 buffer pool 与 MPSC queue。链式 slice 和双向 queue manager 均已完成 Go↔C++ oracle。
 
 ## Directory Contents（深度=1）
 
@@ -16,7 +16,7 @@
 | `cmake/` | 目录 | ✅ | 工程选项与 package config 模板 |
 | `docs/` | 目录 | ✅ | C++ 移植计划与项目标准工作流 |
 | `include/shmipc/` | 目录 | ✅ | 公共 C++ API；当前为版本接口 |
-| `src/` | 目录 | ✅ | library 实现；包含版本、control codec、共享布局、mapping 与 buffer pool |
+| `src/` | 目录 | ✅ | library 实现；包含版本、control codec、共享布局、mapping、buffer pool 与 queue |
 | `tests/` | 目录 | ✅ | CTest 测试 target |
 | `third_party/` | 目录 | ✅ | 上游参考实现聚合目录 |
 | `tools/` | 目录 | ✅ | Go oracle 等开发验证工具 |
@@ -39,6 +39,7 @@
 - 提交 `ed4c7a8` 的 GitHub Actions run `32125329954` 七项作业全部成功，M1 完成。
 - `src/shm/shared_memory_region.cpp:100-315` 实现 move-only file/memfd mapping；`tests/shared_memory_region_test.cpp:21-137` 已在本机 AppleClang 和远端 GCC 8.5 Debug/ASan 通过。
 - `src/shm/atomic_word.hpp` 与 `buffer_pool.cpp:36-525` 实现 lock-free seq_cst 分配回收和 chain publish/adopt；父子进程压力、Sanitizer 及双向 Go oracle 通过。
+- `src/shm/shared_queue.cpp:74-173` 实现 MPSC put/pop、batch 与 working flag；本机/远端压力、Sanitizer 及双向 Go oracle 通过。
 
 ## Guesses & Uncertainties
 

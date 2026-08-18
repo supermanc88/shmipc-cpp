@@ -66,7 +66,7 @@
 - 声明：`src/shm/buffer_layout.hpp:8-93`。
 - 实现：`src/shm/buffer_layout.cpp:49-277`。
 - C++ 测试：`tests/buffer_layout_test.cpp:50-307`。
-- Go layout/行为 probe：`tools/go_oracle/control_header_oracle_test.gotxt:250-344`。
+- Go layout/行为 probe：`tools/go_oracle/control_header_oracle_test.gotxt:400-496`。
 - 上游演进：commit `8ab38be` 将两个 uint64 push/pop counters 替换为角色相关 int32 counter。
 
 ## Links

@@ -2,7 +2,7 @@
 
 ## Summary
 
-承载共享内存布局、映射与数据平面实现。当前已具备 queue/buffer 显式布局、RAII mapping，以及可与 Go 双向传递链式 slice 的跨进程原子 buffer pool；并发 queue 算法尚未实现。
+承载共享内存布局、映射与数据平面实现。当前已具备 queue/buffer 显式布局、RAII mapping、跨进程原子 buffer pool，以及可与 Go 双向互操作的 MPSC queue 与 working flag 状态机。
 
 ## Directory Contents
 
@@ -10,11 +10,13 @@
 |---|---|---|---|
 | `queue_layout.hpp` | 内部头文件 | ✅ | 双架构偏移、布局类型、错误和访问接口 |
 | `queue_layout.cpp` | C++ 实现 | ✅ | native-endian `memcpy` 访问、region size 与边界校验 |
+| `shared_queue.hpp` | 内部头文件 | ✅ | MPSC queue、batch pop、working flag 与错误接口 |
+| `shared_queue.cpp` | C++ 实现 | ✅ | 本地 producer mutex、共享 64 位原子与唤醒状态机 |
 | `buffer_layout.hpp` | 内部头文件 | ✅ | manager/list/slice 类型、角色 counter 和访问接口 |
 | `buffer_layout.cpp` | C++ 实现 | ✅ | buffer native-endian 访问与 checked region size |
 | `buffer_pool.hpp` | 内部头文件 | ✅ | 分级 pool、move-only allocation token 与错误接口 |
 | `buffer_pool.cpp` | C++ 实现 | ✅ | 原子分配回收、链式 publish/adopt 和完整性检查 |
-| `atomic_word.hpp` | 内部头文件 | ✅ | always-lock-free 32 位 seq_cst 共享原子 primitive |
+| `atomic_word.hpp` | 内部头文件 | ✅ | always-lock-free 32/64 位 seq_cst 共享原子 primitive |
 | `shared_memory_region.hpp` | 内部头文件 | ✅ | move-only mapping、错误模型及显式 FD/路径所有权 |
 | `shared_memory_region.cpp` | C++ 实现 | ✅ | file/memfd 创建、映射和 RAII 清理 |
 
@@ -42,7 +44,7 @@
 - 不把 mmap 字节 reinterpret 为 C++ struct，也不对未对齐的 amd64 int64 字段做普通指针解引用。
 - 所有访问前验证非空指针、最小 header、非零 capacity、计算后的 region size 和 slot 范围。
 - arm64 queue manager 总映射长度必须为 16 的倍数，与 Go 映射检查一致。
-- queue/buffer layout helper 是普通 byte accessor，不承诺原子性；buffer pool 已通过独立的 32 位 seq_cst primitive 提供跨进程原子访问，queue 的未对齐 64 位字段策略仍属于 `S-0204`。
+- queue/buffer layout helper 是普通 byte accessor，不承诺原子性；运行期 pool/queue 通过独立的 seq_cst primitive 访问共享字段。
 - buffer slice 必须满足 `data_start <= capacity` 且 `size <= capacity - data_start`。
 - 静态链 validator 最多访问 `capacity` 个节点；offset 必须落在 region 内并按 slice stride 对齐，终止节点必须等于 tail。
 - file mapping 创建端默认拥有 unlink 责任，mapper 仅 munmap；文件 FD 在 mmap 后关闭，memfd FD 则由 region 保留至销毁。
@@ -51,6 +53,8 @@
 - pool 的 size/head/tail/counters 使用 lock-free seq_cst 32 位原子；tier capacity 与 list 起点必须保持 4 字节对齐。
 - slice 普通字段先写完，再通过原子 size 发布；消费者只有成功 CAS head 后才取得 slice 独占权。
 - chain next offset 是共享内存绝对 offset，与 free-list 内部使用的 list-relative offset 不同。
+- queue MPSC 是单进程多 producer、本地 mutex 串行化，对端单 consumer；不支持多个进程共同生产同一方向。
+- queue 先写 element 后原子发布 tail；consumer 清 working 后必须复查 empty，竞争时恢复 working 并继续消费。
 
 ## Evidence
 
@@ -58,21 +62,23 @@
 - C++ 偏移和 region size：`src/shm/queue_layout.cpp:81-114`。
 - C++ header/element 访问：`src/shm/queue_layout.cpp:116-192`。
 - 双布局与错误测试：`tests/queue_layout_test.cpp:48-175`。
-- Go 原生布局 oracle：`tools/go_oracle/control_header_oracle_test.gotxt:196-248`；Darwin arm64 与 amd64 运行路径均通过。
+- Go 原生布局 oracle：`tools/go_oracle/control_header_oracle_test.gotxt:346-399`；Darwin arm64 与 amd64 运行路径均通过。
 - 远端 Linux GCC 8.5 Debug/ASan：4/4 CTest 通过。
 - `src/shm/buffer_layout.cpp:82-225`：buffer checked size 与三类 header accessors。
 - `tests/buffer_layout_test.cpp:50-177`：buffer golden 与错误路径。
-- `tools/go_oracle/control_header_oracle_test.gotxt:250-344`：真实 creator/mapper pointer offsets 及独立 counter 行为。
+- `tools/go_oracle/control_header_oracle_test.gotxt:400-496`：真实 creator/mapper pointer offsets 及独立 counter 行为。
 - `src/shm/buffer_layout.cpp:199-240` 与 `tests/data/corpus/layout_corruption.txt`：有界链验证和 9 类损坏输入。
 - `src/shm/shared_memory_region.cpp:100-315`：move-only 清理、file/memfd 系统调用及 FD 所有权。
 - `tests/shared_memory_region_test.cpp:21-137`：文件双视图、创建端 unlink、move 和 Linux memfd 借用/转移测试；本机与远端 Debug/ASan 全部通过。
-- `src/shm/atomic_word.hpp:9-38` 与 `src/shm/buffer_pool.cpp:36-525`：共享原子、竞争重试及 chain 生命周期。
+- `src/shm/atomic_word.hpp:9-53` 与 `src/shm/buffer_pool.cpp:36-525`：共享原子、竞争重试及 chain 生命周期。
 - `tests/buffer_pool_test.cpp:261-410`：父子进程压力与双向 chain；本机 TSan/ASan+UBSan、远端 GCC 8.5 Debug/ASan 通过。
 - `tests/buffer_pool_interop_helper.cpp:17-75` 与 Go oracle：C++→Go、Go→C++ 两方向 20,000 字节链通过。
+- `src/shm/shared_queue.cpp:74-173` 与 `tests/shared_queue_test.cpp:20-253`：MPSC、batch、环绕及 working 竞争。
+- `tests/shared_queue_interop_helper.cpp:14-64` 与 Go oracle `:116-163`：双向 1,000 element queue 与 working flag 通过。
 
 ## Guesses & Uncertainties
 
-- queue 的 amd64 未对齐 64 位原子策略仍未决定；buffer pool 的 32 位字段策略已经验证。
+- amd64 `+4/+12` 非自然对齐 64 位原子已在远端 GCC 8.5 Debug/ASan 及 20 轮压力中验证；仍需下一批云端 Linux TSan 证据。
 - buffer list counter 偏移已确定，语义已修正为 creator/mapper 各自的本地净 pop/push 值。
 
 ## Links

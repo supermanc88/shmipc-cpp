@@ -1,3 +1,5 @@
+find_package(Threads REQUIRED)
+
 add_executable(shmipc_version_test version_test.cpp)
 target_link_libraries(shmipc_version_test PRIVATE shmipc::shmipc)
 shmipc_apply_project_options(shmipc_version_test)
@@ -38,6 +40,12 @@ target_compile_definitions(
 )
 add_test(NAME shmipc.queue_layout COMMAND shmipc_queue_layout_test)
 
+add_executable(shmipc_shared_queue_test shared_queue_test.cpp)
+target_link_libraries(shmipc_shared_queue_test PRIVATE shmipc::shmipc Threads::Threads)
+target_include_directories(shmipc_shared_queue_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+shmipc_apply_project_options(shmipc_shared_queue_test)
+add_test(NAME shmipc.shared_queue COMMAND shmipc_shared_queue_test)
+
 add_executable(shmipc_buffer_layout_test buffer_layout_test.cpp)
 target_link_libraries(shmipc_buffer_layout_test PRIVATE shmipc::shmipc)
 target_include_directories(shmipc_buffer_layout_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
@@ -67,6 +75,11 @@ target_link_libraries(shmipc_buffer_pool_interop_helper PRIVATE shmipc::shmipc)
 target_include_directories(shmipc_buffer_pool_interop_helper PRIVATE ${PROJECT_SOURCE_DIR}/src)
 shmipc_apply_project_options(shmipc_buffer_pool_interop_helper)
 
+add_executable(shmipc_shared_queue_interop_helper shared_queue_interop_helper.cpp)
+target_link_libraries(shmipc_shared_queue_interop_helper PRIVATE shmipc::shmipc)
+target_include_directories(shmipc_shared_queue_interop_helper PRIVATE ${PROJECT_SOURCE_DIR}/src)
+shmipc_apply_project_options(shmipc_shared_queue_interop_helper)
+
 if(SHMIPC_ENABLE_GO_ORACLE_TESTS)
     find_program(SHMIPC_GO_EXECUTABLE go)
     if(NOT SHMIPC_GO_EXECUTABLE)
@@ -77,6 +90,7 @@ if(SHMIPC_ENABLE_GO_ORACLE_TESTS)
         COMMAND
             ${CMAKE_COMMAND} -E env
             SHMIPC_CPP_BUFFER_POOL_HELPER=$<TARGET_FILE:shmipc_buffer_pool_interop_helper>
+            SHMIPC_CPP_QUEUE_HELPER=$<TARGET_FILE:shmipc_shared_queue_interop_helper>
             ${SHMIPC_GO_EXECUTABLE} run
             ${PROJECT_SOURCE_DIR}/tools/go_oracle/run_control_header_oracle.go
     )

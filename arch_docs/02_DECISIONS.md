@@ -53,7 +53,7 @@
 - 理由：`header.encode` 与事件常量未导出；复制算法不能构成独立 oracle，直接向 submodule 写测试文件又会污染固定参考实现。
 - 决策：runner 先严格校验 submodule commit，再用 Go overlay 将外部 test source 映射为上游 package 的虚拟 `_test.go`，从而直接调用真实未导出符号且不修改 submodule。
 - fixture：`tests/data/golden/control_headers.txt` 全量覆盖事件类型 0..9，并使用多字节 length 探针锁定大端布局；当前只证明 header primitive，不外推 event body 或状态机兼容。
-- 证据：`tools/go_oracle/run_control_header_oracle.go:13-68`、`control_header_oracle_test.gotxt:13-85`、`tests/control_header_golden_test.cpp`；本机三项 CTest 和远端两项 C++ CTest/ASan 均通过，提交 `34ef510` 的 GitHub Actions run [`32119710781`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32119710781) 中 Go oracle 作业及完整七项矩阵全部成功。
+- 证据：`tools/go_oracle/run_control_header_oracle.go:13-74`、`control_header_oracle_test.gotxt:165-345`、`tests/control_header_golden_test.cpp`；本机三项 CTest 和远端两项 C++ CTest/ASan 均通过，提交 `34ef510` 的 GitHub Actions run [`32119710781`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32119710781) 中 Go oracle 作业及完整七项矩阵全部成功。
 
 ### D-009：自动化可完整验收的切片允许自测后直接本地提交
 
@@ -76,9 +76,9 @@
 - 状态：已验证；提交 `ed4c7a8` 的 run `32125329954` 全部成功
 - 布局：24 字节 header；amd64 为 `capacity/head/tail/working = 0/4/12/20`，arm64 为 `0/8/16/4`；12 字节 element 从 offset 24 起依次为三个 uint32。
 - 决策：使用 `memcpy` 在映射字节和本机整数间转换，避免未对齐解引用、strict-aliasing 与 C++ struct padding；访问前校验 capacity、region size 和 slot。
-- 边界：本切片只定义普通布局访问。跨进程原子 load/store、内存序和 MPSC 算法必须在 `S-0204` 单独决策，不能把这些 helpers 当作原子操作。
+- 边界：该文件只定义普通布局访问，不能把 helpers 当作原子操作；`S-0204` 已在独立的 `SharedQueue` 中实现跨进程原子和 MPSC 算法。
 - arm64 约束：queue manager 总映射长度必须是 16 的倍数；与 Go 映射路径一致，当前会拒绝导致总长度不对齐的 capacity。
-- 证据：`third_party/shmipc-go/queue.go:175-209`、`src/shm/queue_layout.cpp:81-192`、`tests/queue_layout_test.cpp:48-175`、`tools/go_oracle/control_header_oracle_test.gotxt:196-248`。
+- 证据：`third_party/shmipc-go/queue.go:175-209`、`src/shm/queue_layout.cpp:81-192`、`tests/queue_layout_test.cpp:48-175`、`tools/go_oracle/control_header_oracle_test.gotxt:346-399`。
 
 ### D-012：buffer list 的 `+20/+24` 是角色本地净操作 counter，C++ 必须保留
 
@@ -88,7 +88,7 @@
 - 修正：`S-0103` 时曾将字段解释为“各角色 outstanding 数量”；`S-0203` 的真实发送端 pop、接收端 push 链路证明该解释不完整。每个字段实际记录本角色本地 `pop - push` 净值，允许因接收对端 slice 而变负；等量双向链路后各自归零。
 - 决策：C++ 以 `BufferListRole::creator/mapper` 显式选择 counter，不能合并字段或把 `+24` 当作 typo；关闭检查复现 Go 的“free size == capacity 且本角色净计数 == 0”。
 - 布局：manager/list/slice header 分别为 8/36/20 字节；slice flags 只使用 offset 16 的低字节。
-- 证据：`third_party/shmipc-go/buffer_manager.go:341-415,417-459,604-613`、commit `8ab38be` diff、`tools/go_oracle/control_header_oracle_test.gotxt:250-344`、`src/shm/buffer_layout.cpp:77-225`。
+- 证据：`third_party/shmipc-go/buffer_manager.go:341-415,417-459,604-613`、commit `8ab38be` diff、`tools/go_oracle/control_header_oracle_test.gotxt:400-496`、`src/shm/buffer_layout.cpp:77-225`。
 
 ### D-013：损坏 free-list 使用有界遍历和确定错误分类
 
@@ -123,7 +123,7 @@
 - 原子模型：size/head/tail/角色 counter 使用 GCC/Clang `__atomic` always-lock-free 32 位 primitive，统一 `__ATOMIC_SEQ_CST`，与 Go `sync/atomic` 默认顺序一致。
 - 发布顺序：pop 先原子预留 size，再以 CAS 取得 head；push 先重置独占 slice，以 CAS 推进 tail并链接旧 tail，最后原子增加 size。旧 head/tail 可能在读取后被竞争者推进，因此只有 CAS 成功决定所有权，陈旧普通字段触发重试而非损坏判定。
 - 对齐：tier capacity 必须为 4 的倍数；初始化和 mapper 都验证 size/head/tail 及 `+20/+24` counters 自然对齐。编译期拒绝非 lock-free 32 位目标。
-- 证据：`src/shm/atomic_word.hpp:9-38`、`src/shm/buffer_pool.cpp:36-525`；本机 20 轮与远端 10 轮父子进程压力、AppleClang TSan/ASan+UBSan、远端 GCC 8.5 ASan 通过。
+- 证据：`src/shm/atomic_word.hpp:9-53`、`src/shm/buffer_pool.cpp:36-525`；本机 20 轮与远端 10 轮父子进程压力、AppleClang TSan/ASan+UBSan、远端 GCC 8.5 ASan 通过。
 
 ### D-017：跨进程 slice 链以 publish/adopt 转移逻辑所有权
 
@@ -132,6 +132,15 @@
 - 接收端：从 root offset 有界遍历并校验 slot、capacity、data range、in-use 和 cycle，再创建本角色 tokens；回收减少接收角色的净 counter。
 - 验收：C++ 发布 20,000 字节链供 Go 读取/回收，Go 再发布等量链供 C++ 读取/回收；两方向 payload、root/next offsets、free-list 完整性和最终两个角色 counter 均验证。
 - 证据：`src/shm/buffer_pool.cpp:282-525`、`tests/buffer_pool_interop_helper.cpp:17-75`、`tools/go_oracle/control_header_oracle_test.gotxt:18-113`。
+
+### D-018：queue MPSC 使用本地 producer mutex 与共享 seq_cst 发布
+
+- 状态：`S-0204` 本机、远端与双向 Go oracle 已验证，待云端
+- 并发模型：与 Go 一致，每个方向由单个进程内的多个 producer 通过本地 mutex 串行写入，对端只有一个 consumer；不承诺多个进程同时生产同一方向。
+- 发布顺序：producer 在 mutex 内检查 `tail-head < capacity`，写完 12 字节 element 后 seq_cst 增加 tail；consumer 读取 element 后 seq_cst 增加 head。`pop_batch` 只是在单 consumer 上循环，不改变共享格式。
+- 架构：运行期只接受本机布局。arm64 使用自然对齐的 `+8/+16` head/tail；amd64 为 Go wire 兼容保留 `+4/+12` 非自然对齐 64 位原子，依赖目标 x86_64 的 always-lock-free builtin，并由远端 GCC 8.5 压力与 Rosetta x86_64 ASan+UBSan 验证。
+- 唤醒：`mark_working` 仅在 `0→1` CAS 成功时要求发送 Polling；consumer 清零后复查队列，若竞争期间已有数据则恢复 1 并继续消费，避免丢失唤醒。
+- 证据：`third_party/shmipc-go/queue.go:235-296`、`src/shm/shared_queue.cpp:74-173`、`tests/shared_queue_test.cpp:20-253`、`tools/go_oracle/control_header_oracle_test.gotxt:116-163`。
 
 ### D-004：v2 和 v3 是两个必须分别验收的握手路径
 
@@ -150,8 +159,8 @@
 ### R-002：Go 原子操作到 C++ 内存序的映射需要按数据结构分别验证
 
 - 事实：Go `sync/atomic` 默认顺序一致；C++ 若用 relaxed 可能破坏“先写 element、后发布 tail”的协议。
-- 当前状态：buffer pool 已使用 always-lock-free 32 位 seq_cst primitive，并通过双进程压力、TSan 和 Go↔C++ 链路验证；只有在互操作压力测试和基准证明后才考虑针对性放宽。
-- 剩余风险：queue 的 amd64 head/tail 位于未对齐的 64 位 offset，不能直接复用 32 位方案；在 `S-0204` 实现前需先锁定上游原子行为与目标平台策略。
+- 当前状态：buffer pool 的 32 位字段与 queue 的 64 位 head/tail 均使用 always-lock-free seq_cst primitive，并通过进程/线程压力、Sanitizer 和 Go↔C++ 链路验证；只有在互操作压力测试和基准证明后才考虑针对性放宽。
+- 平台风险：amd64 queue 必须复现 Go 的 `+4/+12` 非自然对齐原子；远端 x86_64 已验证，下一批 GitHub Linux TSan 和未来 arm64 CI 仍作为持续门禁。
 
 ### R-003：`bufferList.counter` 的创建与映射偏移不一致
 
@@ -195,11 +204,12 @@
 - 2026-08-18：新增固定 Go commit 检查、overlay oracle、10 类 control-header golden 和 C++ fixture 消费测试；本机 oracle/C++ 测试与远端 GCC 8.5/ASan 通过。证据：`tools/go_oracle/`、`tests/data/golden/control_headers.txt`、`tests/control_header_golden_test.cpp`；影响文档：索引、概要、根目录、关系图、项目计划/工作流及新增回归指南/ADR/功能矩阵。
 - 2026-08-18：用户授权自动化可完整验收的切片在自测通过后直接创建本地 commit，同时保留人工测试与远程写操作的授权边界。影响文档：本文件、项目工作流和移植计划。
 - 2026-08-18：提交 `34ef510` 的 GitHub Actions run `32119710781` 完整成功；Go 1.25.10 oracle 的 setup/configure/build/test 与其余六项矩阵全部通过，`S-0003` 和 M0 转为已验证。影响文档：索引、概要、本文件、根目录、oracle 目录、项目工作流、移植计划和功能矩阵。
-- 2026-08-18：新增 `S-0101` 生产 control codec，覆盖 header、事件 0..9、v2/v3 metadata 与 fallback；固定 Go 编码器和 C++ round-trip 共用三份 golden，异常输入测试覆盖截断、非法字段、错误事件、尾随字节与帧上限。本机 AppleClang Debug/ASan+UBSan 及远端 GCC 8.5 Debug/ASan 通过。证据：`src/protocol/control_codec.*`、`tests/protocol_codec_test.cpp`、`tools/go_oracle/control_header_oracle_test.gotxt:13-192`；影响文档：索引、概要、本文件、root/protocol/oracle 目录、关系图、计划、工作流、回归指南和功能矩阵。
+- 2026-08-18：新增 `S-0101` 生产 control codec，覆盖 header、事件 0..9、v2/v3 metadata 与 fallback；固定 Go 编码器和 C++ round-trip 共用三份 golden，异常输入测试覆盖截断、非法字段、错误事件、尾随字节与帧上限。本机 AppleClang Debug/ASan+UBSan 及远端 GCC 8.5 Debug/ASan 通过。证据：`src/protocol/control_codec.*`、`tests/protocol_codec_test.cpp`、`tools/go_oracle/control_header_oracle_test.gotxt:165-345`；影响文档：索引、概要、本文件、root/protocol/oracle 目录、关系图、计划、工作流、回归指南和功能矩阵。
 - 2026-08-18：提交 `603933e` 的 GitHub Actions run `32122127419` 七项作业全部成功，`S-0101` 转为已验证；新增 `S-0102` queue 显式布局访问器与双架构 golden，Go oracle 分别在 arm64/amd64 路径通过，C++ 本机与远端 GCC 8.5 Debug/ASan 通过。证据：`src/shm/queue_layout.*`、`tests/data/golden/queue_layout.txt`、`tests/queue_layout_test.cpp`；影响文档：索引、概要、本文件、root/shm/oracle 目录、关系图、计划、工作流、回归指南和功能矩阵。
-- 2026-08-18：通过提交历史和 Go creator/mapper 双视图实验关闭 `bufferList.counter +20/+24` 偏移不确定项，当时将其解释为角色隔离 outstanding counters；新增 manager/list/slice C++ 显式布局访问器。该语义解释随后在 `S-0203` 修正。证据：上游 commit `8ab38be`、`tools/go_oracle/control_header_oracle_test.gotxt:250-344`、`src/shm/buffer_layout.*`、`tests/buffer_layout_test.cpp`。
+- 2026-08-18：通过提交历史和 Go creator/mapper 双视图实验关闭 `bufferList.counter +20/+24` 偏移不确定项，当时将其解释为角色隔离 outstanding counters；新增 manager/list/slice C++ 显式布局访问器。该语义解释随后在 `S-0203` 修正。证据：上游 commit `8ab38be`、`tools/go_oracle/control_header_oracle_test.gotxt:400-496`、`src/shm/buffer_layout.*`、`tests/buffer_layout_test.cpp`。
 - 2026-08-18：新增有界 buffer free-list validator 和 9 类固定损坏输入 corpus，确定性拒绝截断、溢出、非法 offset、循环、错误 tail、slice capacity 与 data range。证据：`src/shm/buffer_layout.cpp:199-240`、`tests/data/corpus/layout_corruption.txt`、`tests/buffer_layout_test.cpp:185-289`；影响文档：索引、本文件、shm 目录/文件、计划、回归指南和功能矩阵。
 - 2026-08-18：提交 `ed4c7a8` 的 GitHub Actions run `32125329954` 七项作业全部成功，M1 完成；新增 `S-0201` move-only file/memfd mapping，明确 creator/mapper 路径清理和 borrowed/transferred FD 所有权。本机 AppleClang 与远端 GCC 8.5 Debug/Sanitizer 通过。证据：`src/shm/shared_memory_region.*`、`tests/shared_memory_region_test.cpp`；影响文档：索引、概要、本文件、root/shm 目录、mapping 文件、关系图、计划、回归指南和功能矩阵。
 - 2026-08-18：新增 `S-0202` 单进程分级 buffer pool，保留上游 sentinel 与大档位回退语义，并以 move-only 角色 token、严格 free-chain/offset 校验加固回收边界。本机与远端 Debug/Sanitizer 通过。证据：`src/shm/buffer_pool.*`、`tests/buffer_pool_test.cpp`；影响文档：索引、概要、本文件、root/shm 目录、buffer pool 文件、关系图、计划、回归指南和功能矩阵。
 - 2026-08-18：`S-0203` 将 free-list 更新升级为 always-lock-free 32 位 seq_cst 原子，实现 chain allocate/publish/adopt/recycle，并以双向 Go↔C++ 20,000 字节链路验证。并发/互操作实验修正先前 counter 推断：字段是各角色本地 pop-push 净值，不是严格 outstanding 数量。证据：`src/shm/atomic_word.hpp`、`src/shm/buffer_pool.*`、`tests/buffer_pool_test.cpp`、`tests/buffer_pool_interop_helper.cpp`、Go oracle；影响文档：索引、概要、本文件、root/shm/oracle 目录、buffer pool/atomic 文件、关系图、计划、工作流、回归指南和功能矩阵。
 - 2026-08-18：提交 `281d024` 的 GitHub Actions run `32129419428` 七项作业全部成功，包含 Linux TSan、ASan+UBSan、GCC/Clang Debug/Release 与 Go 双向 chain oracle；`S-0201..0203` 云端门禁关闭。
+- 2026-08-18：`S-0204` 新增 `SharedQueue`，按上游“本地 producer mutex + 共享 seq_cst head/tail + 单 consumer”模型实现 MPSC、batch 与 working flag；4 producer 并发、父子进程环绕、1,000 轮唤醒竞争、双向 Go oracle 和远端 amd64 20 轮压力通过。证据：`src/shm/shared_queue.*`、`tests/shared_queue*`、Go oracle；影响文档：索引、概要、本文件、root/shm/oracle 目录、shared queue/atomic 文件、关系图、计划、工作流、回归指南和功能矩阵。

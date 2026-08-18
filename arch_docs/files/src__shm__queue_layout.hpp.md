@@ -61,7 +61,7 @@
 - 声明：`src/shm/queue_layout.hpp:8-83`。
 - 实现：`src/shm/queue_layout.cpp:49-192`。
 - 测试：`tests/queue_layout_test.cpp:48-175`。
-- Go oracle：`tools/go_oracle/control_header_oracle_test.gotxt:196-248`。
+- Go oracle：`tools/go_oracle/control_header_oracle_test.gotxt:346-399`。
 
 ## Links
 

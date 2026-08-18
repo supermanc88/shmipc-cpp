@@ -113,6 +113,55 @@ func TestBufferPoolInterop(t *testing.T) {
 	}
 }
 
+func TestQueueInterop(t *testing.T) {
+	helper := os.Getenv("SHMIPC_CPP_QUEUE_HELPER")
+	if helper == "" {
+		t.Fatal("SHMIPC_CPP_QUEUE_HELPER is not set")
+	}
+	path := filepath.Join(t.TempDir(), "queue-manager")
+	created, err := exec.Command(helper, "create", path).CombinedOutput()
+	if err != nil {
+		t.Fatalf("C++ queue create failed: %v: %s", err, created)
+	}
+
+	qm, err := mappingQueueManager(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !qm.recvQueue.consumerIsWorking() {
+		t.Fatal("C++ did not publish working flag")
+	}
+	const elementCount = 1000
+	for value := uint32(0); value < elementCount; value++ {
+		element, err := qm.recvQueue.pop()
+		if err != nil {
+			t.Fatalf("Go queue pop %d: %v", value, err)
+		}
+		if element.seqID != value || element.offsetInShmBuf != value+7 ||
+			element.status != value^0x55aa {
+			t.Fatalf("C++ queue element mismatch at %d: %+v", value, element)
+		}
+	}
+	if !qm.recvQueue.markNotWorking() || qm.recvQueue.consumerIsWorking() {
+		t.Fatal("Go failed to retire C++ queue working flag")
+	}
+	for value := uint32(0); value < elementCount; value++ {
+		if err := qm.sendQueue.put(queueElement{
+			seqID: value + 10000, offsetInShmBuf: value + 17,
+			status: value ^ 0xaa55,
+		}); err != nil {
+			t.Fatalf("Go queue put %d: %v", value, err)
+		}
+	}
+	if !qm.sendQueue.markWorking() {
+		t.Fatal("Go failed to publish working flag")
+	}
+	verified, err := exec.Command(helper, "verify", path).CombinedOutput()
+	if err != nil {
+		t.Fatalf("C++ queue verify failed: %v: %s", err, verified)
+	}
+}
+
 func TestControlHeaderGolden(t *testing.T) {
 	events := []struct {
 		name      string

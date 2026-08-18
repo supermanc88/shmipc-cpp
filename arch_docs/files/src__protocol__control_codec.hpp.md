@@ -70,7 +70,7 @@
 - 声明：`src/protocol/control_codec.hpp:10-96`。
 - 实现：`src/protocol/control_codec.cpp:58-275`。
 - C++ 测试：`tests/control_header_golden_test.cpp`、`tests/protocol_codec_test.cpp:46-199`。
-- Go oracle：`tools/go_oracle/control_header_oracle_test.gotxt:13-192`。
+- Go oracle：`tools/go_oracle/control_header_oracle_test.gotxt:165-345`。
 
 ## Update Triggers
 

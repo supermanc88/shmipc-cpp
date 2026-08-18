@@ -15,11 +15,13 @@ graph TD
   golden["header / metadata / fallback fixtures"]
   codec["src/protocol/control_codec"]
   queue_layout["src/shm/queue_layout"]
+  shared_queue["src/shm/shared_queue"]
   buffer_layout["src/shm/buffer_layout"]
   mapping["src/shm/shared_memory_region"]
   pool["src/shm/buffer_pool"]
   atomic["src/shm/atomic_word"]
   interop["C++/Go buffer-chain oracle"]
+  queue_interop["C++/Go queue oracle"]
   golden_test["C++ codec tests"]
 
   consumer -- includes --> public
@@ -36,6 +38,9 @@ graph TD
   library -- contains --> codec
   library -- contains --> queue_layout
   queue_layout -- reads/writes --> golden
+  shared_queue -- uses --> queue_layout
+  shared_queue -- uses --> atomic
+  shared_queue -- puts/pops --> queue_bytes["MPSC queue bytes / working flag"]
   library -- contains --> buffer_layout
   buffer_layout -- reads/writes --> golden
   library -- contains --> mapping
@@ -45,6 +50,8 @@ graph TD
   pool -- uses --> atomic
   interop -- publishes/adopts --> pool
   interop -- calls --> upstream
+  queue_interop -- puts/pops --> shared_queue
+  queue_interop -- calls --> upstream
   ci -- runs --> runner
 ```
 

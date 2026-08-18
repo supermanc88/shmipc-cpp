@@ -115,13 +115,13 @@ Go 与 C++ 双向互操作已确认为项目正确性验证目标，但 Go 不�
 - commit：`55c241eea321071278d1ee7f7c46292d23e50a5b`
 - 所有 fixture、对端二进制和报告必须记录该 commit。
 
-control-protocol oracle 的标准入口：
+Go 协议与数据平面 oracle 的标准入口：
 
 ```bash
 go run tools/go_oracle/run_control_header_oracle.go
 ```
 
-该 runner 使用临时 Go overlay 访问上游 package 内部的 header、metadata 与 fallback 编码器，不修改 submodule；commit 不匹配、事件集合变化或任一字节变化都会失败。详细回归命令见 [regression-test-guide.md](regression-test-guide.md)。
+该 runner 使用临时 Go overlay 访问上游 package 内部的控制协议、buffer pool 与 queue，不修改 submodule；commit 不匹配、协议字节、链式 slice 或 queue 双向行为不一致都会失败。详细回归命令见 [regression-test-guide.md](regression-test-guide.md)。
 
 ### 当前 Go 工具链策略
 
