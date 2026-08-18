@@ -22,7 +22,7 @@
 
 ## Invariants & Boundaries
 
-- 单 Stream ID 固定为 1，与 Go client 首次 `OpenStream` 一致；其他 ID 确定性报错。
+- 此早期单 Stream 基线固定 ID 1，真实 Go server 可接受该 ID；它不复现固定 Go client 从 2 开始的 allocator，多路兼容路径见 `v2_multiplexed_session.hpp`。
 - 消息边界等于一个 queue element 对应的一条 buffer chain。
 - queue working 的清零/复查使用 `mark_not_working`，避免 producer 与 consumer 竞争时丢失唤醒。
 - callback 不持有 `EventConnection` 强引用，Session close 不形成 ownership cycle。

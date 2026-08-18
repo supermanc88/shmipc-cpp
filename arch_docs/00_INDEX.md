@@ -23,6 +23,7 @@
 - [files/src__core__v2_handshake.hpp.md](files/src__core__v2_handshake.hpp.md)：v2 握手状态、资源 ownership 与错误模型
 - [files/src__core__v2_client_session.hpp.md](files/src__core__v2_client_session.hpp.md)：v2 client 单 Session/Stream 数据路径
 - [files/src__core__v2_server_session.hpp.md](files/src__core__v2_server_session.hpp.md)：v2 server 动态绑定单 Stream 数据路径
+- [files/src__core__v2_multiplexed_session.hpp.md](files/src__core__v2_multiplexed_session.hpp.md)：v2 多路 Session 路由与独立 Stream 状态
 - [dirs/third_party__shmipc-go.md](dirs/third_party__shmipc-go.md)：Go 参考实现文件映射
 - [files/third_party__shmipc-go__const.go.md](files/third_party__shmipc-go__const.go.md)：协议与布局常量
 - [files/third_party__shmipc-go__protocol_event.go.md](files/third_party__shmipc-go__protocol_event.go.md)：控制协议事件格式
@@ -141,8 +142,9 @@
 | C++ queue layout accessors | `src/shm/queue_layout.*`, `tests/data/golden/queue_layout.txt` | `QUEUE-001..003` |
 | C++ MPSC queue 与 Go 互操作 | `src/shm/shared_queue.*`, `tests/shared_queue*_helper.cpp`, `tools/go_oracle/` | `QUEUE-001..003` |
 | Unix/TCP 控制连接与 Linux 事件层 | `src/transport/control_socket.*`, `src/transport/epoll_dispatcher.*`, `tests/*transport*`, `tests/epoll_dispatcher_test.cpp` | `COMP-001`, `S-0301` |
-| Stream 多路复用 | `session.go`, `stream.go` | `STREAM-001..004` |
+| Stream 多路复用 | `session.go`, `stream.go`, `src/core/v2_multiplexed_session.*` | `STREAM-001..004` |
 | C++ v2 单 Stream 双角色 | `src/core/v2_{client,server}_session.*`, `tests/v2_*_session*` | `COMP-001`, `STREAM-001..002` |
+| C++ v2 client-originated 多 Stream | `src/core/v2_multiplexed_session.*`, `tests/v2_multiplexed_session*` | `COMP-001`, `STREAM-001..002` |
 | 控制通道 fallback | `stream.go`, `protocol_manager.go` | `STREAM-003` |
 | 服务监听和热重启 | `listener.go`, `session_manager.go` | `API-002`, `OPS-001` |
 | 性能与稳定性指标 | `stats.go`, `bench_test.go` | `NFR-003`, `OBS-001` |
@@ -150,9 +152,9 @@
 ## 分析进度
 
 - 已完成：上游架构分析、M0、M1、M2，以及 M3 `S-0301..0304`；提交 `0347f34` 的 run `32158446306` 七项门禁全部成功，Go protocol oracle 为 15/15。
-- 进行中：进入 `S-0305` 多 Stream、deadline/cancel 和完整错误传播。
+- 进行中：`S-0305a` 多 Stream 核心已完成本地/远端验证；进入 `S-0305b` deadline、queue-full retry 和完整错误传播。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
-- 待验证：多 Stream、fallback 与完整关闭矩阵。两个方向的单 Stream 已完成本机、远端和云端验证。
+- 待验证：deadline、queue-full fallback 与完整关闭/错误传播矩阵。多 Stream 两个角色已完成本机和远端验证，云端门禁待 push。
 
 ## 状态标记
 

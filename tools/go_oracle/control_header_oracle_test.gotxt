@@ -302,6 +302,167 @@ func TestV2ServerSessionInterop(t *testing.T) {
 	})
 }
 
+func TestV2MultiplexedSessionInterop(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("full shmipc Session initialization requires Linux")
+	}
+	helper := os.Getenv("SHMIPC_CPP_V2_MULTIPLEXED_SESSION_HELPER")
+	if helper == "" {
+		t.Fatal("SHMIPC_CPP_V2_MULTIPLEXED_SESSION_HELPER is not set")
+	}
+	request := func(id uint32) []byte {
+		return bytes.Repeat([]byte{byte(0x20 + id)}, 2000+int(id)*3000)
+	}
+	response := func(id uint32) []byte {
+		return bytes.Repeat([]byte{byte(0x40 + id)}, 3000+int(id)*2000)
+	}
+
+	t.Run("GoClientToCppServer", func(t *testing.T) {
+		directory := t.TempDir()
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer listener.Close()
+		port := listener.Addr().(*net.TCPAddr).Port
+		command := exec.Command(helper, "server", "127.0.0.1", strconv.Itoa(port))
+		var helperOutput bytes.Buffer
+		command.Stdout = &helperOutput
+		command.Stderr = &helperOutput
+		if err := command.Start(); err != nil {
+			t.Fatal(err)
+		}
+		connection, err := listener.Accept()
+		if err != nil {
+			command.Process.Kill()
+			t.Fatal(err)
+		}
+		config := DefaultConfig()
+		config.LogOutput = io.Discard
+		config.InitializeTimeout = 5 * time.Second
+		config.QueueCap = 64
+		config.ShareMemoryBufferCap = 1 << 20
+		config.QueuePath = filepath.Join(directory, "go-mux-queue")
+		config.ShareMemoryPathPrefix = filepath.Join(directory, "go-mux")
+		config.BufferSliceSizes = []*SizePercentPair{{Size: 4096, Percent: 60}, {Size: 8192, Percent: 40}}
+		session, sessionErr := newSession(config, connection, true)
+		var streams []*Stream
+		if sessionErr == nil {
+			for id := uint32(2); id <= 4; id++ {
+				stream, err := session.OpenStream()
+				if err != nil {
+					sessionErr = err
+					break
+				}
+				if stream.StreamID() != id {
+					sessionErr = fmt.Errorf("Go stream ID = %d, want %d", stream.StreamID(), id)
+					break
+				}
+				if _, err := stream.Write(request(id)); err != nil {
+					sessionErr = err
+					break
+				}
+				streams = append(streams, stream)
+			}
+		}
+		if sessionErr == nil {
+			for _, stream := range streams {
+				actual := make([]byte, len(response(stream.StreamID())))
+				if _, err := io.ReadFull(stream, actual); err != nil {
+					sessionErr = err
+					break
+				}
+				if !bytes.Equal(actual, response(stream.StreamID())) {
+					sessionErr = fmt.Errorf("C++ response mismatch for stream %d", stream.StreamID())
+					break
+				}
+				if err := stream.Close(); err != nil {
+					sessionErr = err
+					break
+				}
+			}
+		}
+		if sessionErr != nil {
+			connection.Close()
+			command.Process.Kill()
+		}
+		helperErr := command.Wait()
+		if session != nil {
+			session.Close()
+		}
+		if sessionErr != nil || helperErr != nil {
+			t.Fatalf("Go client=%v C++ server=%v helper output=%s", sessionErr, helperErr, helperOutput.String())
+		}
+	})
+
+	t.Run("CppClientToGoServer", func(t *testing.T) {
+		directory := t.TempDir()
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer listener.Close()
+		port := listener.Addr().(*net.TCPAddr).Port
+		command := exec.Command(helper, "client", "127.0.0.1", strconv.Itoa(port), filepath.Join(directory, "cpp-mux-queue"), filepath.Join(directory, "cpp-mux-buffer"))
+		var helperOutput bytes.Buffer
+		command.Stdout = &helperOutput
+		command.Stderr = &helperOutput
+		if err := command.Start(); err != nil {
+			t.Fatal(err)
+		}
+		connection, err := listener.Accept()
+		if err != nil {
+			command.Process.Kill()
+			t.Fatal(err)
+		}
+		config := DefaultConfig()
+		config.LogOutput = io.Discard
+		config.InitializeTimeout = 5 * time.Second
+		session, sessionErr := newSession(config, connection, false)
+		if sessionErr == nil {
+			for id := uint32(2); id <= 4; id++ {
+				stream, err := session.AcceptStream()
+				if err != nil {
+					sessionErr = err
+					break
+				}
+				if stream.StreamID() != id {
+					sessionErr = fmt.Errorf("C++ stream ID = %d, want %d", stream.StreamID(), id)
+					break
+				}
+				actual := make([]byte, len(request(id)))
+				if _, err := io.ReadFull(stream, actual); err != nil {
+					sessionErr = err
+					break
+				}
+				if !bytes.Equal(actual, request(id)) {
+					sessionErr = fmt.Errorf("C++ request mismatch for stream %d", id)
+					break
+				}
+				if _, err := stream.Write(response(id)); err != nil {
+					sessionErr = err
+					break
+				}
+				if err := stream.Close(); err != nil {
+					sessionErr = err
+					break
+				}
+			}
+		}
+		if sessionErr != nil {
+			connection.Close()
+			command.Process.Kill()
+		}
+		helperErr := command.Wait()
+		if session != nil {
+			session.Close()
+		}
+		if sessionErr != nil || helperErr != nil {
+			t.Fatalf("C++ client=%v Go server=%v helper output=%s", helperErr, sessionErr, helperOutput.String())
+		}
+	})
+}
+
 func TestBufferPoolInterop(t *testing.T) {
 	helper := os.Getenv("SHMIPC_CPP_BUFFER_POOL_HELPER")
 	if helper == "" {

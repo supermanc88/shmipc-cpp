@@ -180,7 +180,7 @@
 ### D-022：首个 Session 切片固定 Stream ID 1 和消息级接收
 
 - 状态：已验证；提交 `050d7da` 的 run `32154121843` 七项门禁全部成功
-- 范围：C++ v2 client 只创建 Go client 首次 `OpenStream` 对应的 ID 1；每个 queue element 对应一条完整 buffer chain 和一条接收消息。
+- 范围：此早期 C++ v2 client 基线固定使用 ID 1（真实 Go server 接受任意未知非零 opened ID）；它不复现后来证实为从 2 开始的 Go client allocator。每个 queue element 对应一条完整 buffer chain 和一条接收消息。
 - 唤醒：producer 只在 working `0→1` 时发 Polling；consumer drain 到 empty 后清零并复查，继承 `SharedQueue::mark_not_working` 的无丢唤醒不变量。
 - close：正常 close 优先发送无 buffer 的 closed queue element，同时接受控制通道 StreamClose，以兼容 Go 在 queue full 时的关闭 fallback。
 - 生命周期：Session 拥有 event connection 和 callback state；callback state 不反向强持有 connection，close 不形成环。receive timeout 只结束本次等待，不关闭 Session。
@@ -202,6 +202,16 @@
 - 方向事实：`getStream()` 仅在 `!isClient` 时为未知 opened ID 创建 Stream 并送入 `acceptCh`，源码同时标注 `todo support bidirectional streaming`。兼容切片只承诺 client Open→server Accept，不把 server 主动开流作为可互操作能力。
 - 关闭与 deadline：remote close 把 opened 转为 half-closed，剩余数据读尽后返回 EOF，写入因 `IsOpen()==false` 被拒绝；从 half-closed 本地 Close 不再发送确认。read/write deadline 是 Stream 上持久绝对时间，其中 write deadline 只约束 queue-full 重试。
 - 证据：`third_party/shmipc-go/session.go:35-39,145-152,249-290,560-583`、`stream.go:135-180,215-249,287-341,430-452`。
+
+### D-025：多路实现分离连接级路由与 per-Stream 状态
+
+- 状态：`S-0305a` 本地/远端已验证；云端门禁待 push
+- 结构：保留已验证的单 Stream client/server 作为回归基线，新建 `V2MultiplexedSessionState` 统一拥有共享内存、路由表、accept 队列和 Session failure；每个 `V2StreamState` 独立拥有消息队列、mutex/condition variable 与关闭状态，`V2Stream` 只作为 move-only 句柄。
+- Open/Accept：client 从 2 连续分配并先注册再发送；server 不因控制连接建立或 client 创建句柄而 Accept，只在未知 opened queue element 首次到达时创建并投递 Stream。固定 Go 不支持的 server-originated Open 不进入兼容承诺。
+- close：opened 一侧主动 close 发送一次 closed element；收到 remote close 后进入 half-closed，本地 close 不回 ACK。测试必须指定唯一主动关闭方，不能把 close 当成请求/响应握手。
+- ownership：Stream 强持有连接级 state 和 EventConnection，保证 Session owner 之外的句柄不会悬空；共享文件生命周期断言前必须释放全部 Stream 句柄。
+- 验证：C++ 3 Stream 并发首包与双向消息，本地普通/ASan+UBSan/TSan 15/15、专项 100 次；远端 GCC 8.5 Debug/ASan 15/15、专项 100 次；真实 Go 双向 3 Stream 普通 100 轮、ASan 20 轮通过。
+- 后续：persistent deadline、queue-full retry/fallback、关闭后的路由表回收和完整 Session error matrix 属于 `S-0305b`。
 
 ## 设计风险与待验证事实
 

@@ -2,7 +2,7 @@
 
 ## Summary
 
-组合 protocol、transport 与 shm 子系统形成可执行的会话初始化和最小数据路径。当前实现 v2 文件路径握手，以及 client/server 两个角色的单 Session/单 Stream；多 Stream、v3 与 fallback 仍由后续切片补充。
+组合 protocol、transport 与 shm 子系统形成可执行的会话初始化和数据路径。当前实现 v2 文件路径握手、client/server 单 Stream 基线，以及 client-originated 的多 Stream Session；deadline、v3 与 fallback 仍由后续切片补充。
 
 ## Directory Contents
 
@@ -13,6 +13,8 @@
 | `v2_client_session.hpp` | 内部头文件 | ✅ | 单 client Session/Stream API、状态与错误模型 |
 | `v2_client_session.cpp` | C++ 实现 | ✅ | epoll callback、queue/buffer 数据面、Polling 与关闭 |
 | `v2_server_session.hpp` | 内部头文件 | ✅ | server 动态绑定首个远端 Stream、收发与关闭 API |
+| `v2_multiplexed_session.hpp` | 内部头文件 | ✅ | 多路 client/server Session 与独立 Stream 句柄 |
+| `v2_multiplexed_session.cpp` | C++ 实现 | ✅ | 连接级路由/accept、per-Stream 消息与关闭状态 |
 
 ## Invariants
 
@@ -21,8 +23,9 @@
 - creator 独占路径 unlink 责任，mapper 只持有 mapping，避免 server 误删不属于自己的路径。
 - 握手复用 blocking `ControlSocket::read_full/write_full`；成功后 socket 仍由调用者拥有，便于 Session 将其移动到 epoll dispatcher。
 - 任一步骤失败时，已创建的文件和 mapping 通过 RAII 回滚；已存在的非本进程文件不会被删除。
-- 本层不实现 deadline；Session 初始化超时需要在后续集成层统一取消 socket 阻塞。
-- client 当前固定 Stream ID 1；server 从首个远端 opened element 动态绑定非零 ID（真实 Go client 首个为 2）。两者都不静默执行 fallback 或多 Stream。
+- 单 Stream 基线仍分别固定 ID 1/动态绑定一个 ID；多路 client 按固定 Go 源码从 2 连续分配，server 在每个未知 opened ID 的首包到达时 Accept。
+- 多路实现只支持 client 主动开流，不承诺固定 Go 尚未实现的双向开流。
+- 本层尚未实现 persistent deadline、queue-full retry/fallback；Session 初始化超时仍需在后续集成层统一取消 socket 阻塞。
 
 ## Evidence
 
@@ -33,11 +36,13 @@
 - 固定 Go overlay 在远端 Linux 验证两个方向，并连续重复 50 轮；GCC 8.5 Debug/ASan 与提交 `3f2db07` 的 run `32151993614` 七项门禁通过。
 - `tests/v2_client_session_test.cpp` 与 Go oracle 验证 C++ client→Go server 的 20,000/17,000 字节双向链、Polling、timeout 和 close；远端 Debug/ASan、50/50 重复及提交 `050d7da` 的 run `32154121843` 七项门禁通过。
 - `tests/v2_server_session_test.cpp` 与 Go oracle 验证 Go client→C++ server 的三消息双向链、ID 2 动态绑定、批量 Polling 和两个方向 close；远端 Debug/ASan 14/14、普通 300/300、ASan 50/50 及提交 `0347f34` 的 run `32158446306` 七项门禁通过。
+- `tests/v2_multiplexed_session_test.cpp` 与双向 Go oracle 验证 ID 2/3/4、并发首包、server Accept、独立收发与无 ACK close；本地三套 sanitizer、远端 Debug/ASan、普通互操作 100 轮及 ASan 20 轮通过。
 
 ## Links
 
 - [v2 handshake 文件](../files/src__core__v2_handshake.hpp.md)
 - [v2 client Session 文件](../files/src__core__v2_client_session.hpp.md)
 - [v2 server Session 文件](../files/src__core__v2_server_session.hpp.md)
+- [v2 multiplexed Session 文件](../files/src__core__v2_multiplexed_session.hpp.md)
 - [架构概要](../01_OVERVIEW.md)
 - [回归测试指南](../../docs/regression-test-guide.md)

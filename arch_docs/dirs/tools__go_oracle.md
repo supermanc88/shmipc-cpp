@@ -2,7 +2,7 @@
 
 ## Summary
 
-以不修改 submodule 的方式运行固定 Go 参考实现内部 oracle，锁定控制协议、queue/buffer 布局、角色 counter 行为，并驱动生产 BufferWriter/Reader、SharedQueue、v2 handshake 与 client/server Session helpers 验证互操作。
+以不修改 submodule 的方式运行固定 Go 参考实现内部 oracle，锁定控制协议、queue/buffer 布局、角色 counter 行为，并驱动生产 BufferWriter/Reader、SharedQueue、v2 handshake、单 Stream 与多 Stream Session helpers 验证互操作。
 
 ## Directory Contents
 
@@ -26,6 +26,7 @@
 - `TestV2HandshakeInterop` 在 Linux 启动真实 Go `newSession` 与 C++ helper，分别验证 Go client→C++ server 和 C++ client→Go server；helper 以 mapping signal 保持 creator 生命周期，避免测试端过早断开。
 - `TestV2ClientSessionInterop` 在 Linux 以真实 Go server `AcceptStream/Read/Write/Close` 验证 C++ client 的 20,000→17,000 字节共享内存双向数据和关闭路径。
 - `TestV2ServerSessionInterop` 在 Linux 以真实 Go client 首个 Stream ID 2 验证 C++ server 的三消息双向数据；独立子场景分别验证 C++ 与 Go 主动关闭。
+- `TestV2MultiplexedSessionInterop` 在 Linux 双向验证 3 个连续 Stream：Go client→C++ server 与 C++ client→Go server 均检查 ID 2/3/4、跨 slice request/response 和主动关闭同步；远端普通 100 轮、ASan helper 20 轮通过。
 - 提交 `0347f34` 的 GitHub Actions run `32158446306` 在 Linux 完整执行 Go protocol oracle，CTest 为 15/15。
 - runner 支持 `SHMIPC_GO_ORACLE_COMPILE_LINUX_AMD64=<output>`，用于在本机生成包含 overlay 的静态 Linux/amd64 test binary，再同步到无 Go 工具链的远端执行。
 - 提交 `34ef510` 的 GitHub Actions run `32119710781` 在 Go 1.25.10 下完成 setup、configure、build 和 test，作业结论 success。
@@ -33,7 +34,7 @@
 
 ## Guesses & Uncertainties
 
-- 当前锁定控制协议正常编码、queue/buffer byte layout、buffer pool/queue 原子语义、Buffer IO 分档策略、v2 握手双向互操作及 C++ client/server 单 Stream 数据面；macOS 会明确跳过依赖 Linux Session 的子项，正式证据来自远端和 CI。Go oracle 不替代 C++ 异常输入测试。
+- 当前锁定控制协议正常编码、queue/buffer byte layout、buffer pool/queue 原子语义、Buffer IO 分档策略、v2 握手双向互操作及 C++ client/server 单/多 Stream 数据面；macOS 会明确跳过依赖 Linux Session 的子项，正式证据来自远端和 CI。Go oracle 不替代 C++ 异常输入测试。
 - 上游 commit 升级必须显式更新 runner 常量、golden 来源和 ADR，不能静默接受。
 
 ## Links

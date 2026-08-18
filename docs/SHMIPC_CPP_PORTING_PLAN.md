@@ -6,7 +6,7 @@
 |---|---|
 | 项目类型 | Go 到 C++ 的跨语言、跨运行时重实现 |
 | 参考实现 | `third_party/shmipc-go` commit `55c241eea321071278d1ee7f7c46292d23e50a5b` |
-| 当前阶段 | M2 与 M3 `S-0301..0304` 已完成；进入 `S-0305` 多 Stream 与完整关闭语义 |
+| 当前阶段 | M2 与 M3 `S-0301..0304` 已完成；`S-0305a` 多 Stream 核心已完成本地/远端验证，进入 `S-0305b` deadline 与错误传播 |
 | 已确认目标 | 在 Linux 上提供现代 C++ 共享内存 IPC 库，并与固定 Go 实现双向互通；Go 仅用于开发验收 |
 | 流程依据 | 用户提供的《软件项目端到端标准工作流程》 |
 | 架构依据 | [上游架构概要](../arch_docs/01_OVERVIEW.md) 与 [决策/风险](../arch_docs/02_DECISIONS.md) |
@@ -187,7 +187,8 @@ tools/
 - `S-0302`（已验证）：v2 `/dev/shm` 握手；双向真实 Go Session 初始化、远端 50 轮重复及 run `32151993614` 七项门禁通过。
 - `S-0303`（已验证）：单 Session/单 Stream C++ client↔Go server；20,000→17,000 字节、timeout、Polling 和双向 close 通过；提交 `050d7da` 的 run `32154121843` 七项门禁全部成功。
 - `S-0304`（已验证）：Go client↔C++ server，动态绑定首个 Stream ID 2；三消息、跨 slice、Polling 和双向关闭通过；提交 `0347f34` 的 run `32158446306` 七项门禁全部成功。
-- `S-0305`：多 Stream 并发、deadline、半关闭与错误传播。
+- `S-0305a`（本地/远端已验证）：client 连续 Open ID 2/3/4、server 首包 Accept、per-Stream 并发路由与无 ACK close；云端门禁待 push。
+- `S-0305b`：persistent deadline、queue-full retry、关闭后的路由回收与完整错误传播。
 
 退出条件：`COMP-001` 完成；两个方向的互操作报告绑定到准确 commit/build。
 
@@ -313,11 +314,12 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-M3-003`：v2 client 创建 buffer/双 queue 并发送单帧路径 metadata，server 无 ACK 地映射反向 queue 视图；C++ 覆盖错误版本/事件、截断、缺失路径、已有文件保护和失败回滚。远端固定 Go `newSession` 两方向互通并连续 50/50，GCC 8.5 Debug/ASan 各 12/12；提交 `3f2db07` 的 run [`32151993614`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32151993614) 七项作业及关键步骤全部成功。
 - `E-M3-004`：v2 C++ client 固定 Stream ID 1，以 BufferWriter publish→queue put→Polling 发送，以 queue pop→adopt→BufferReader 接收，并支持 timeout、queue/control close。C++ peer 与真实 Go server 均完成 20,000→17,000 字节跨 slice round-trip；远端 GCC 8.5 Debug/ASan 13/13、ASan Go 互操作及重复 50/50 通过；提交 `050d7da` 的 run [`32154121843`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32154121843) 七项门禁全部成功，Go protocol oracle 14/14。
 - `E-M3-005`：v2 C++ server 从首个 opened element 动态绑定真实 Go client Stream ID 2，一次 Polling 排空三条消息；两个独立互操作场景覆盖 C++/Go 主动 close。300 轮压力发现无 ACK 握手下 mapper 不能要求完整空闲链快照，修正为稳定布局与动态 offset 边界校验；本机 Debug/Release/ASan+UBSan/TSan 14/14，远端 Debug/ASan 14/14、普通互操作 300/300、ASan helper 50/50；提交 `0347f34` 的 run [`32158446306`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32158446306) 七项门禁全部成功，Go protocol oracle 15/15。
+- `E-M3-006`：v2 多路实现分离 Session 路由/共享资源与 per-Stream 消息/关闭状态；client 按固定 Go 源码分配 ID 2/3/4，server 在首个 opened 数据到达时 Accept。C++ 三 Stream 并发首包、双向跨 slice 消息与两个主动关闭方向通过；本地 Debug/ASan+UBSan/TSan 15/15、专项 100 次，远端 GCC 8.5 Debug/ASan 15/15、专项 100 次，真实 Go 双向互操作普通 100 轮、ASan 20 轮通过。云端证据待 push。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. 在 `S-0305` 扩展多 Stream、deadline/cancel 和完整错误传播。
-2. 按固定 Go 实现的 client-originated 连续 Stream ID（2、3、4…）建立并发创建/关闭、半关闭和 Session 断开矩阵；不假定注释所称的奇偶分配或服务端主动开流。
+1. 在 `S-0305b` 实现 persistent read/write deadline、queue-full retry、路由回收和完整 Session 错误传播。
+2. 扩展多 Stream 关闭、deadline 与 Session 断开矩阵；继续保持 client-originated 连续 Stream ID（2、3、4…），不假定奇偶分配或服务端主动开流。
 3. 保留 live-pool mapping、两个方向单 Stream 与 300 轮压力作为持续回归。

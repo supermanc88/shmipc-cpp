@@ -29,12 +29,13 @@
 | v2 `/dev/shm` 握手 | 已验证 | 双向真实 Go Session、错误/清理路径、远端 50/50、run `32151993614` 七项门禁 | 持续回归 |
 | v2 client 单 Session/Stream | 已验证 | C++/Go 20,000→17,000 字节、Polling、timeout、close、远端 ASan/50 轮、run `32154121843` | 持续回归 |
 | v2 server 单 Session/Stream | 已验证 | Go client ID 2、三消息、双向 close、远端 Debug/ASan、300/300、ASan 50/50、run `32158446306` | 持续回归 |
+| v2 client-originated 多 Stream | 部分完成 | ID 2/3/4、并发首包、server Accept、双向 Go 100 轮、ASan 20 轮；云端待 push | `S-0305b` 补 deadline、queue-full retry 与错误传播 |
 
 ## 产品需求
 
 | Requirement IDs | 能力 | 状态 | 首个实现切片 |
 |---|---|---|---|
-| `COMP-001` | Go↔C++ v2 双向互通 | 握手与两个方向单 Stream 已验证；多 Stream 待 `S-0305` | M3 |
+| `COMP-001` | Go↔C++ v2 双向互通 | 握手、两个方向单 Stream及 client-originated 多 Stream 已验证；deadline/错误矩阵待 `S-0305b` | M3 |
 | `S-0301` | Unix/TCP control transport 与 epoll | 已验证；run `32148166394` 七项门禁成功 | M3 |
 | `COMP-002` | Go↔C++ v3 双向互通 | 基线锁定 | M4 |
 | `PROTO-001` | 控制头、事件、metadata 与 fallback 编解码 | 已验证 | `S-0101` |
@@ -46,8 +47,8 @@
 | `QUEUE-001` | MPSC queue put/pop | 已云端验证 | `S-0102`/`S-0204` |
 | `QUEUE-002` | working flag 与批量唤醒 | 已云端验证 | `S-0204` |
 | `QUEUE-003` | amd64/arm64 原子对齐 | 两套布局与两架构原子路径已云端验证 | `S-0102`/`S-0204` |
-| `STREAM-001..004` | 多路复用、读写、fallback、关闭 | 单 Stream 共享内存读写/关闭已验证；多路复用与 fallback 待实现 | M3/M4 |
-| `API-001` | RAII Session/Stream API | 内部单 client Session 已验证；公共 API 待设计 | M3 |
+| `STREAM-001..004` | 多路复用、读写、fallback、关闭 | client-originated 多 Stream 读写/关闭已验证；deadline 与 fallback 待实现 | M3/M4 |
+| `API-001` | RAII Session/Stream API | 内部单/多 Stream move-only API 已验证；公共 API 待设计 | M3 |
 | `API-002..003` | Listener/SessionManager/异步 API | 未开始 | M5 |
 | `OPS-001` | 热重启 | 未开始 | M5 |
 | `OBS-001` | 指标与日志 | 未开始 | M5 |

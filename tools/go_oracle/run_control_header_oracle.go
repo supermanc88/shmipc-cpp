@@ -60,7 +60,7 @@ func main() {
 	}
 
 	compileOutput := os.Getenv("SHMIPC_GO_ORACLE_COMPILE_LINUX_AMD64")
-	commandArgs := []string{"test", "-overlay", overlayPath, "-run", "^Test((ControlHeader|SharedMemoryMetadata|FallbackData|QueueLayout|BufferLayout)Golden|(BufferPool|Queue|V2Handshake|V2ClientSession|V2ServerSession)Interop)$", "-count=1", "-v", "-timeout=20s", "."}
+	commandArgs := []string{"test", "-overlay", overlayPath, "-run", "^Test((ControlHeader|SharedMemoryMetadata|FallbackData|QueueLayout|BufferLayout)Golden|(BufferPool|Queue|V2Handshake|V2ClientSession|V2ServerSession|V2MultiplexedSession)Interop)$", "-count=1", "-v", "-timeout=30s", "."}
 	if compileOutput != "" {
 		commandArgs = []string{"test", "-c", "-overlay", overlayPath, "-o", compileOutput, "."}
 	}
