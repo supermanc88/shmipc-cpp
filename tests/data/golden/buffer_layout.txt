@@ -1,0 +1,4 @@
+# kind total_size field offsets
+manager 8 list_count=0 used_length=4
+list 36 size=0 capacity=4 head=8 tail=12 capacity_per_buffer=16 creator_counter=20 mapper_counter=24 region=36
+slice 20 capacity=0 size=4 data_start=8 next=12 flags=16

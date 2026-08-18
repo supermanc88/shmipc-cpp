@@ -2,7 +2,7 @@
 
 ## Summary
 
-以不修改 submodule 的方式运行固定 Go 参考实现内部 oracle，当前锁定控制协议正常编码及 amd64/arm64 queue byte layout。
+以不修改 submodule 的方式运行固定 Go 参考实现内部 oracle，当前锁定控制协议、amd64/arm64 queue、buffer manager/list/slice 布局及角色 counter 行为。
 
 ## Directory Contents
 
@@ -19,11 +19,12 @@
 - `control_header_oracle_test.gotxt:18-27` 全量映射事件类型 0..9；`:71-75` 调用上游 `header.encode` 并逐字节比较。
 - `control_header_oracle_test.gotxt:87-142` 通过 `Session.generateShmMetadata` 验证 v2/v3；`:144-192` 通过 `fallbackDataEvent.encode` 验证 fallback。
 - `control_header_oracle_test.gotxt:196-248` 通过 `createQueueFromBytes` 的真实指针映射验证当前 `runtime.GOARCH` 对应 queue golden；Darwin arm64 与 amd64 运行路径均通过。
+- `control_header_oracle_test.gotxt:250-344` 直接计算 buffer 指针偏移，并以同一内存的 creator/mapper 两视图验证 `+20/+24` counter 独立增减。
 - 提交 `34ef510` 的 GitHub Actions run `32119710781` 在 Go 1.25.10 下完成 setup、configure、build 和 test，作业结论 success。
 
 ## Guesses & Uncertainties
 
-- 当前锁定 header、metadata、fallback 的正常编码和 queue byte layout；握手状态机、并发原子语义及其他 event body 仍属于后续切片，Go oracle 也不替代 C++ 异常输入测试。
+- 当前锁定控制协议正常编码、queue/buffer byte layout 与角色 counter 行为；握手状态机和跨语言原子语义仍属于后续切片，Go oracle 也不替代 C++ 异常输入测试。
 - 上游 commit 升级必须显式更新 runner 常量、golden 来源和 ADR，不能静默接受。
 
 ## Links

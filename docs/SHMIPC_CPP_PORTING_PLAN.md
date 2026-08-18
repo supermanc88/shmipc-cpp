@@ -6,7 +6,7 @@
 |---|---|
 | 项目类型 | Go 到 C++ 的跨语言、跨运行时重实现 |
 | 参考实现 | `third_party/shmipc-go` commit `55c241eea321071278d1ee7f7c46292d23e50a5b` |
-| 当前阶段 | M1 `S-0101` 已完成；`S-0102` queue 双架构显式布局访问器已通过本机与远端门禁，暂随本地提交批次等待云端验证 |
+| 当前阶段 | M1 `S-0101` 已完成；`S-0102` 已本地提交，`S-0103` buffer 布局与角色 counter 结论已通过本机/远端门禁，随批次等待云端验证 |
 | 已确认目标 | 在 Linux 上提供现代 C++ 共享内存 IPC 库，并与固定 Go 实现双向互通；Go 仅用于开发验收 |
 | 流程依据 | 用户提供的《软件项目端到端标准工作流程》 |
 | 架构依据 | [上游架构概要](../arch_docs/01_OVERVIEW.md) 与 [决策/风险](../arch_docs/02_DECISIONS.md) |
@@ -42,7 +42,7 @@
 3. 一个 Session 拥有两个反向映射的队列和一个分级 buffer manager；控制连接负责握手、通知、fallback、关闭及热重启。
 4. 默认 `/dev/shm` 路径走 v2；memfd 路径走 v3 协商和 `SCM_RIGHTS`。
 5. 上游明确只支持 Linux amd64/arm64。本机 macOS arm64 测试失败，但 Linux/amd64 测试二进制交叉编译成功。
-6. `bufferList.counter` 在创建端和映射端的 offset 分别为 `+20`、`+24`，必须先通过 Linux 双进程探针确认兼容行为。
+6. `bufferList.counter` 的 `+20/+24` 已由 Go 双视图 probe 确认为 creator/mapper 角色隔离 outstanding counters，C++ 必须按角色保留。
 7. 远程 Linux 主机 `10.210.23.2` 已可通过 SSH 别名 `23.2` 使用；同步目录为 `/home/chm/shmipc-cpp`。
 8. 固定 Go 基线的 Linux/amd64 测试二进制已在远端完整运行并 `PASS`。远端当前有 CMake 3.20.6、GCC 8.5.0、Ninja 1.8.2，但没有 Go/Clang/容器运行时。
 
@@ -158,7 +158,7 @@ tools/
 
 - `S-0101`（已验证）：控制 header、事件枚举、metadata 和 fallback 编解码；run `32122127419` 七项作业全部成功。
 - `S-0102`（本地与远端已验证，待云端）：queue header/element 的 amd64 与 arm64 显式布局访问器。
-- `S-0103`：buffer manager/list/slice layout probe，专项验证 counter `+20/+24` 差异。
+- `S-0103`（本地与远端已验证，待云端）：buffer manager/list/slice 显式布局；实验确认 creator counter `+20`、mapper counter `+24` 是角色隔离计数。
 - `S-0104`：损坏输入 corpus：截断、超长、溢出、非法 offset 和循环链。
 
 退出条件：所有 byte golden 与 Go 一致；布局不确定项有实验结论/ADR；fuzz smoke 与 sanitizer 不崩溃。
@@ -264,7 +264,7 @@ tools/
 |---|---|---:|---|
 | `R-001` | C++ 原子对象覆盖外部 mmap 存储的标准/ABI 语义 | 高 | 选定明确实现策略并在两编译器、两架构、TSan/压力下验证 |
 | `R-002` | Go/C++ 内存序不匹配导致偶发丢消息 | 高 | 第一版 seq_cst；跨进程压力与计数守恒通过后再优化 |
-| `R-003` | counter `+20/+24` 上游布局歧义 | 高 | Linux 双进程 probe 给出事实并形成 ADR/兼容策略 |
+| `R-003` | counter `+20/+24` 上游布局歧义 | 已关闭 | Go 双视图 probe 证明是角色隔离 counters；见 D-012 |
 | `R-004` | 关闭与 callback 竞争造成 UAF/死锁 | 高 | 明确 owner/executor，状态机测试 + ASan/TSan |
 | `R-005` | 恶意共享内存 offset 导致越界/循环 | 高 | checked arithmetic、访问上限、固定变异和 fuzz |
 | `R-006` | fallback 与共享路径混用导致乱序 | 高 | per-Stream sticky 状态不变量和互操作顺序测试 |
@@ -294,11 +294,12 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-M0-004`：固定 commit runner 与 overlay oracle 在本机通过；10 类 control-header golden（SHA-256 `ee6379a976c47c4d81c894ecf110132884ee8e48086091338cb17a8d8765fdfa`）被 Go `header.encode` 和 C++ test 共同验证，远端 GCC 8.5 Debug/ASan 两项 C++ 测试通过；提交 `34ef510` 的 GitHub Actions run [`32119710781`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32119710781) 中 Go oracle 与完整七项矩阵全部成功。
 - `E-M1-001`：生产 codec 覆盖 8 字节 header、事件 0..9、v2/v3 metadata 与 fallback；三份 golden 同时由固定 Go 编码器和 C++ round-trip 使用，并覆盖截断、非法字段、错误事件、尾随字节和帧上限。macOS AppleClang Debug/ASan+UBSan 与远端 Linux GCC 8.5 Debug/ASan 均通过；提交 `603933e` 的 GitHub Actions run [`32122127419`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32122127419) 七项作业全部成功。
 - `E-M1-002`：queue golden（SHA-256 `3c2dba47b214fe158582c7cb31ec9b74fa060819d848a87b253c1cf83d721697`）锁定 amd64 的 `cap/head/tail/working = 0/4/12/20` 与 arm64 的 `0/8/16/4`，element 均为 24 字节后连续三个 uint32。Go oracle 分别在 Darwin arm64 与 amd64 运行路径通过；C++ 双布局测试及远端 Linux GCC 8.5 Debug/ASan 通过，云端证据随下一批 push 补录。
+- `E-M1-003`：buffer layout golden（SHA-256 `83a090638c0096c7619c66f22b6621ae6da6b77343150bacbfde4a99d6b6af5b`）锁定 manager 8 字节、list 36 字节、slice 20 字节。固定 Go 实验在同一内存上建立 creator/mapper 两视图，证明 pop/push 分别只修改 `+20/+24` 并独立归零；arm64 与 amd64 Go 路径、C++ accessors、远端 GCC 8.5 Debug/ASan 均通过。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. 创建 `S-0102` 本地提交后进入 `S-0103`，专项验证 buffer counter `+20/+24` 差异。
-2. 在 `S-0103` 得出实验结论并形成兼容决策，不带着未决 offset 进入 buffer 分配器实现。
-3. 连续自动化切片积累到稳定批次后统一 push，并补齐 GitHub Actions evidence。
+1. 创建 `S-0103` 本地提交后进入 `S-0104`，扩充损坏输入 corpus 与 offset/链边界验证。
+2. `S-0104` 完成后形成 M1 稳定批次，统一 push 并补齐 GitHub Actions evidence。
+3. M1 退出门禁通过后再进入 RAII mmap/memfd 实现。

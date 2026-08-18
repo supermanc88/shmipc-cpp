@@ -38,6 +38,17 @@ target_compile_definitions(
 )
 add_test(NAME shmipc.queue_layout COMMAND shmipc_queue_layout_test)
 
+add_executable(shmipc_buffer_layout_test buffer_layout_test.cpp)
+target_link_libraries(shmipc_buffer_layout_test PRIVATE shmipc::shmipc)
+target_include_directories(shmipc_buffer_layout_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+shmipc_apply_project_options(shmipc_buffer_layout_test)
+target_compile_definitions(
+    shmipc_buffer_layout_test
+    PRIVATE
+        SHMIPC_BUFFER_LAYOUT_GOLDEN_PATH="${CMAKE_CURRENT_SOURCE_DIR}/data/golden/buffer_layout.txt"
+)
+add_test(NAME shmipc.buffer_layout COMMAND shmipc_buffer_layout_test)
+
 if(SHMIPC_ENABLE_GO_ORACLE_TESTS)
     find_program(SHMIPC_GO_EXECUTABLE go)
     if(NOT SHMIPC_GO_EXECUTABLE)

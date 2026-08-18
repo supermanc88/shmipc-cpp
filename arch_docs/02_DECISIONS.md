@@ -80,6 +80,15 @@
 - arm64 约束：queue manager 总映射长度必须是 16 的倍数；与 Go 映射路径一致，当前会拒绝导致总长度不对齐的 capacity。
 - 证据：`third_party/shmipc-go/queue.go:175-209`、`src/shm/queue_layout.cpp:81-192`、`tests/queue_layout_test.cpp:48-175`、`tools/go_oracle/control_header_oracle_test.gotxt:196-248`。
 
+### D-012：buffer list 的 `+20/+24` 是角色隔离 counter，C++ 必须保留
+
+- 状态：行为已验证；C++ layout 本机与远端已验证，待批次云端证据
+- 事实：`support arm64` 提交 `8ab38be` 将原来位于 `+20/+28` 的两个 uint64 push/pop counters 改为 int32 counter；创建视图绑定 `+20`，映射视图绑定 `+24`。
+- 实验：同一内存建立 creator/mapper 两视图后，creator pop 只使 `+20` 变为 1，mapper pop 只使 `+24` 变为 1；双方各自 push 后各自 counter 归零。
+- 决策：C++ 以 `BufferListRole::creator/mapper` 显式选择 counter，不能把两者合并，也不能把 `+24` 当作待修复 typo。每端用自己的 outstanding counter 参与关闭前归还检查。
+- 布局：manager/list/slice header 分别为 8/36/20 字节；slice flags 只使用 offset 16 的低字节。
+- 证据：`third_party/shmipc-go/buffer_manager.go:341-415,417-459,604-613`、commit `8ab38be` diff、`tools/go_oracle/control_header_oracle_test.gotxt:250-344`、`src/shm/buffer_layout.cpp:77-225`。
+
 ### D-004：v2 和 v3 是两个必须分别验收的握手路径
 
 - 状态：已验证
@@ -102,9 +111,9 @@
 ### R-003：`bufferList.counter` 的创建与映射偏移不一致
 
 - 证据：`createFreeBufferList` 在 header `+20` 绑定 counter，`mappingFreeBufferList` 在 `+24` 绑定 counter；header 总长为 36。
-- 风险：创建端与映射端观察到不同计数，影响 unmap 前的“buffer 全部归还”检查。
-- 状态：代码事实已确认，行为和上游意图待 Linux 运行时实验确认。
-- 对策：在 M1 建立布局探针和双进程测试；在结果明确前不要自行“修正”C++ 布局。
+- 原风险：创建端与映射端观察不同计数，可能影响 unmap 前的“buffer 全部归还”检查。
+- 状态：已关闭。Go 双视图实验确认两者是各角色独立 outstanding counters；差异来自 arm64 兼容提交，不应合并。
+- 对策：C++ 保留 `+20/+24` 两字段并按本端角色选择；后续互操作关闭测试继续验证实际 Session 生命周期。
 
 ### R-004：上游测试在非 Linux 上不是可靠基线
 
@@ -115,7 +124,7 @@
 
 - 事实：控制 header 有 magic/version/type 检查，但共享内存 metadata 和部分链式 offset 读取依赖对端可信；`extractShmMetadata` 未完整验证 body 边界。
 - 当前缓解：`S-0101` 已对控制帧 length、magic、version、event、body 截断、尾随字节、metadata 字段长度和 64 MiB 默认上限做显式检查。
-- 剩余对策：buffer 共享内存 offset、加法溢出、循环链、最大 slice 数和文件大小仍须在 `S-0103..0104` 加固；兼容正常输入，不继承不安全行为。
+- 剩余对策：buffer 共享内存 offset、循环链、最大 slice 数和文件大小仍须在 `S-0104` 加固；兼容正常输入，不继承不安全行为。
 
 ### R-006：远端时钟漂移与部分 sanitizer 运行库缺失
 
@@ -142,3 +151,4 @@
 - 2026-08-18：提交 `34ef510` 的 GitHub Actions run `32119710781` 完整成功；Go 1.25.10 oracle 的 setup/configure/build/test 与其余六项矩阵全部通过，`S-0003` 和 M0 转为已验证。影响文档：索引、概要、本文件、根目录、oracle 目录、项目工作流、移植计划和功能矩阵。
 - 2026-08-18：新增 `S-0101` 生产 control codec，覆盖 header、事件 0..9、v2/v3 metadata 与 fallback；固定 Go 编码器和 C++ round-trip 共用三份 golden，异常输入测试覆盖截断、非法字段、错误事件、尾随字节与帧上限。本机 AppleClang Debug/ASan+UBSan 及远端 GCC 8.5 Debug/ASan 通过。证据：`src/protocol/control_codec.*`、`tests/protocol_codec_test.cpp`、`tools/go_oracle/control_header_oracle_test.gotxt:13-192`；影响文档：索引、概要、本文件、root/protocol/oracle 目录、关系图、计划、工作流、回归指南和功能矩阵。
 - 2026-08-18：提交 `603933e` 的 GitHub Actions run `32122127419` 七项作业全部成功，`S-0101` 转为已验证；新增 `S-0102` queue 显式布局访问器与双架构 golden，Go oracle 分别在 arm64/amd64 路径通过，C++ 本机与远端 GCC 8.5 Debug/ASan 通过。证据：`src/shm/queue_layout.*`、`tests/data/golden/queue_layout.txt`、`tests/queue_layout_test.cpp`；影响文档：索引、概要、本文件、root/shm/oracle 目录、关系图、计划、工作流、回归指南和功能矩阵。
+- 2026-08-18：通过提交历史和 Go creator/mapper 双视图实验关闭 `bufferList.counter +20/+24` 不确定项，确认其为 arm64 兼容后角色隔离的 outstanding counters；新增 manager/list/slice C++ 显式布局访问器。证据：上游 commit `8ab38be`、`tools/go_oracle/control_header_oracle_test.gotxt:250-344`、`src/shm/buffer_layout.*`、`tests/buffer_layout_test.cpp`；影响文档：索引、概要、本文件、root/shm/oracle 目录、关系图、计划、工作流、回归指南和功能矩阵。

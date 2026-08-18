@@ -2,7 +2,7 @@
 
 ## Summary
 
-承载共享内存布局、映射与数据平面实现。当前 `S-0102` 只实现 queue header/element 的 amd64 与 arm64 显式字节访问器；尚未实现 mmap/memfd RAII、原子 queue 算法或 buffer allocator。
+承载共享内存布局、映射与数据平面实现。当前 `S-0102..0103` 已实现 queue 双架构及 buffer manager/list/slice 显式字节访问器；尚未实现 mmap/memfd RAII、原子 queue 算法或 buffer allocator。
 
 ## Directory Contents
 
@@ -10,6 +10,8 @@
 |---|---|---|---|
 | `queue_layout.hpp` | 内部头文件 | ✅ | 双架构偏移、布局类型、错误和访问接口 |
 | `queue_layout.cpp` | C++ 实现 | ✅ | native-endian `memcpy` 访问、region size 与边界校验 |
+| `buffer_layout.hpp` | 内部头文件 | ✅ | manager/list/slice 类型、角色 counter 和访问接口 |
+| `buffer_layout.cpp` | C++ 实现 | ✅ | buffer native-endian 访问与 checked region size |
 
 ## Layout
 
@@ -23,12 +25,20 @@
 
 每个 element 固定 12 字节：`sequence_id`、`buffer_offset`、`status` 各占 native-endian uint32。一个 queue region 为 `24 + capacity * 12`，manager 连续放置两个 queue region。
 
+### Buffer layout
+
+- manager header：8 字节，list count `+0`、used length `+4`。
+- list header：36 字节，size/cap/head/tail/cap-per-buffer 位于 `+0/+4/+8/+12/+16`。
+- creator outstanding counter 位于 `+20`，mapper outstanding counter 位于 `+24`；`+28..35` 保留。
+- slice header：20 字节，capacity/size/data-start/next 位于 `+0/+4/+8/+12`；flags 实际使用 `+16` 的低字节。
+
 ## Invariants
 
 - 不把 mmap 字节 reinterpret 为 C++ struct，也不对未对齐的 amd64 int64 字段做普通指针解引用。
 - 所有访问前验证非空指针、最小 header、非零 capacity、计算后的 region size 和 slot 范围。
 - arm64 queue manager 总映射长度必须为 16 的倍数，与 Go 映射检查一致。
 - 当前 helper 是普通 byte accessor，不提供跨进程原子性；原子访问和内存序属于 `S-0204`。
+- buffer slice 必须满足 `data_start <= capacity` 且 `size <= capacity - data_start`。
 
 ## Evidence
 
@@ -38,11 +48,14 @@
 - 双布局与错误测试：`tests/queue_layout_test.cpp:48-175`。
 - Go 原生布局 oracle：`tools/go_oracle/control_header_oracle_test.gotxt:196-248`；Darwin arm64 与 amd64 运行路径均通过。
 - 远端 Linux GCC 8.5 Debug/ASan：4/4 CTest 通过。
+- `src/shm/buffer_layout.cpp:82-225`：buffer checked size 与三类 header accessors。
+- `tests/buffer_layout_test.cpp:50-177`：buffer golden 与错误路径。
+- `tools/go_oracle/control_header_oracle_test.gotxt:250-344`：真实 creator/mapper pointer offsets 及独立 counter 行为。
 
 ## Guesses & Uncertainties
 
 - C++ 对外部 mmap 字段进行符合标准且与 Go 互操作的原子访问策略尚未决定；不得从当前 `memcpy` helper 推导并发安全。
-- buffer list counter 的 `+20/+24` 差异仍由 `S-0103` 专项验证。
+- buffer list counter 的 `+20/+24` 已验证为 creator/mapper 角色隔离字段，不再是不确定项。
 
 ## Links
 

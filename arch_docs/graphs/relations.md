@@ -15,6 +15,7 @@ graph TD
   golden["header / metadata / fallback fixtures"]
   codec["src/protocol/control_codec"]
   queue_layout["src/shm/queue_layout"]
+  buffer_layout["src/shm/buffer_layout"]
   golden_test["C++ codec tests"]
 
   consumer -- includes --> public
@@ -31,6 +32,8 @@ graph TD
   library -- contains --> codec
   library -- contains --> queue_layout
   queue_layout -- reads/writes --> golden
+  library -- contains --> buffer_layout
+  buffer_layout -- reads/writes --> golden
   ci -- runs --> runner
 ```
 

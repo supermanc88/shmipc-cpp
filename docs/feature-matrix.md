@@ -17,6 +17,7 @@
 | control-header golden | 已验证 | Go/C++/远端/云端共同验证 | 持续作为生产 codec 回归输入 |
 | metadata/fallback golden | 已验证 | 固定 Go 编码器、C++ round-trip、run `32122127419` | 持续回归 |
 | amd64/arm64 queue layout golden | 本地与远端已验证 | 两架构 Go oracle、C++ 双布局、GCC 8.5/ASan | 随下一批 push 补云端证据 |
+| buffer manager/list/slice layout golden | 本地与远端已验证 | 两架构 Go oracle、角色 counter probe、C++/ASan | 随 M1 批次补云端证据 |
 
 ## 产品需求
 
@@ -26,7 +27,9 @@
 | `COMP-002` | Go↔C++ v3 双向互通 | 基线锁定 | M4 |
 | `PROTO-001` | 控制头、事件、metadata 与 fallback 编解码 | 已验证 | `S-0101` |
 | `PROTO-002` | v2/v3 初始化状态机 | 未开始 | `S-0401` |
-| `SHM-001..004` | 布局、分配回收、零拷贝、安全边界 | 未开始 | M1/M2 |
+| `SHM-001` | Queue/buffer manager/slice 共享布局 | 显式 byte layout 已验证，待云端 | `S-0102..0103` |
+| `SHM-002..003` | 分配回收与零拷贝生命周期 | 未开始 | M2 |
+| `SHM-004` | 损坏 offset/length 防护 | 基础 header 边界已实现，corpus 待补 | `S-0104` |
 | `QUEUE-001` | MPSC queue put/pop | 布局访问器已验证，并发算法未开始 | `S-0102`/`S-0204` |
 | `QUEUE-002` | working flag 与批量唤醒 | 字段布局已验证，状态算法未开始 | `S-0204` |
 | `QUEUE-003` | amd64/arm64 原子对齐 | byte layout 已验证，原子访问待实现 | `S-0102`/`S-0204` |

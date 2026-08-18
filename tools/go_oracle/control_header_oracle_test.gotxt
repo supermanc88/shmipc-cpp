@@ -246,3 +246,101 @@ func TestQueueLayoutGolden(t *testing.T) {
 		t.Fatalf("expected one queue layout row for %s, got %d", runtime.GOARCH, rows)
 	}
 }
+
+func TestBufferLayoutGolden(t *testing.T) {
+	golden, err := os.Open(os.Getenv("SHMIPC_BUFFER_LAYOUT_GOLDEN"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer golden.Close()
+
+	bufferNum := uint32(3)
+	capacityPerBuffer := uint32(4)
+	memory := make([]byte, countBufferListMemSize(bufferNum, capacityPerBuffer))
+	creator, err := createFreeBufferList(bufferNum, capacityPerBuffer, memory, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapper, err := mappingFreeBufferList(memory, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := uintptr(unsafe.Pointer(&memory[0]))
+	offsets := map[string]map[string]uint64{
+		"manager": {"list_count": 0, "used_length": bmCapOffset},
+		"list": {
+			"size": 0, "capacity": 4, "head": 8, "tail": 12,
+			"capacity_per_buffer": 16,
+			"creator_counter":     uint64(uintptr(unsafe.Pointer(creator.counter)) - base),
+			"mapper_counter":      uint64(uintptr(unsafe.Pointer(mapper.counter)) - base),
+			"region":              bufferListHeaderSize,
+		},
+		"slice": {
+			"capacity": bufferCapOffset, "size": bufferSizeOffset,
+			"data_start": bufferDataStartOffset, "next": nextBufferOffset,
+			"flags": bufferFlagOffset,
+		},
+	}
+	sizes := map[string]uint64{
+		"manager": bufferManagerHeaderSize,
+		"list":    bufferListHeaderSize,
+		"slice":   bufferHeaderSize,
+	}
+
+	rows := 0
+	scanner := bufio.NewScanner(golden)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			t.Fatalf("invalid buffer layout row %q", line)
+		}
+		kind := fields[0]
+		totalSize, err := strconv.ParseUint(fields[1], 10, 64)
+		expectedSize, knownKind := sizes[kind]
+		if err != nil || !knownKind || expectedSize != totalSize {
+			t.Fatalf("unexpected %s layout size %s", kind, fields[1])
+		}
+		for _, field := range fields[2:] {
+			parts := strings.Split(field, "=")
+			if len(parts) != 2 {
+				t.Fatalf("invalid buffer layout field %q", field)
+			}
+			offset, err := strconv.ParseUint(parts[1], 10, 64)
+			expectedOffset, knownField := offsets[kind][parts[0]]
+			if err != nil || !knownField || expectedOffset != offset {
+				t.Fatalf("unexpected %s.%s offset %s", kind, parts[0], parts[1])
+			}
+		}
+		rows++
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 3 {
+		t.Fatalf("expected 3 buffer layout rows, got %d", rows)
+	}
+
+	creatorBuffer, err := creator.pop()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *creator.counter != 1 || *mapper.counter != 0 {
+		t.Fatalf("creator pop counters: creator=%d mapper=%d", *creator.counter, *mapper.counter)
+	}
+	mapperBuffer, err := mapper.pop()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *creator.counter != 1 || *mapper.counter != 1 {
+		t.Fatalf("mapper pop counters: creator=%d mapper=%d", *creator.counter, *mapper.counter)
+	}
+	mapper.push(mapperBuffer)
+	creator.push(creatorBuffer)
+	if *creator.counter != 0 || *mapper.counter != 0 {
+		t.Fatalf("returned counters: creator=%d mapper=%d", *creator.counter, *mapper.counter)
+	}
+}
