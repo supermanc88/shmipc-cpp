@@ -211,7 +211,17 @@
 - close：opened 一侧主动 close 发送一次 closed element；收到 remote close 后进入 half-closed，本地 close 不回 ACK。测试必须指定唯一主动关闭方，不能把 close 当成请求/响应握手。
 - ownership：Stream 强持有连接级 state 和 EventConnection，保证 Session owner 之外的句柄不会悬空；共享文件生命周期断言前必须释放全部 Stream 句柄。
 - 验证：C++ 3 Stream 并发首包与双向消息，本地普通/ASan+UBSan/TSan 15/15、专项 100 次；远端 GCC 8.5 Debug/ASan 15/15、专项 100 次；真实 Go 双向 3 Stream 普通 100 轮、ASan 20 轮通过。
-- 后续：persistent deadline、queue-full retry/fallback、关闭后的路由表回收和完整 Session error matrix 属于 `S-0305b`。
+- 后续：persistent deadline、queue-full retry/close fallback、关闭后的路由表回收和 Session error 扇出已由 `S-0305b` 完成；数据 fallback 属于 M4。
+
+### D-026：deadline 只约束等待，queue-full 重试与 close fallback 保持 Go 顺序
+
+- 状态：`S-0305b` 本地/远端已验证；云端门禁待 push
+- read deadline：Stream 保存可清除的 `steady_clock` 绝对时间；更新 deadline 会唤醒已经阻塞的 receive，并持续影响未来 receive。调用级 timeout 与 persistent deadline 取较早者。
+- write deadline：普通 buffer publish/queue put 不因 write deadline 失败；只有 queue full 后的最多 10 次、每次 10ms retry 受它约束。失败路径回收已 publish chain。
+- close fallback：closed element 若因 queue full 无法入队，编码 12 字节 v2 `StreamClose(stream_id)` 走有序控制连接；peer 同时接受 queue/control 两条关闭路径。
+- 并发顺序：per-Stream send mutex 保证多个 send 有序；并发 close 先置 local closed 并唤醒 retry，再等待在途 send 结束后发送 close，禁止 close 越过数据。
+- 生命周期：本地 close 后保留 state 供 remote close/Session failure 等待，句柄释放时从 route map 删除；remote close 保留 half-closed state 供消息排空。Session 断开先把原始 failure 扇出到所有 Stream，再清空 route/accept queue。
+- 证据：满 8-slot queue 的立即 write timeout、25ms 后释放槽并重试成功、满队列控制 close、满队列 send 被并发 close 中断、阻塞 read deadline 更新及两个 Stream/Accept 同时被 Session close 唤醒；本地普通 100 轮与 ASan+UBSan/TSan，远端 Debug 专项 100 轮及 ASan 通过。
 
 ## 设计风险与待验证事实
 

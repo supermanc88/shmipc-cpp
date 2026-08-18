@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace shmipc::core {
@@ -15,6 +16,9 @@ struct V2StreamState;
 
 class V2Stream final {
 public:
+  using Clock = std::chrono::steady_clock;
+  using Deadline = Clock::time_point;
+
   V2Stream() noexcept = default;
   ~V2Stream();
 
@@ -38,6 +42,9 @@ public:
   };
 
   [[nodiscard]] MessageResult receive(std::chrono::milliseconds timeout);
+  void set_deadline(std::optional<Deadline> deadline) noexcept;
+  void set_read_deadline(std::optional<Deadline> deadline) noexcept;
+  void set_write_deadline(std::optional<Deadline> deadline) noexcept;
   [[nodiscard]] V2SessionStatus close();
   [[nodiscard]] V2SessionStatus
   wait_remote_close(std::chrono::milliseconds timeout);

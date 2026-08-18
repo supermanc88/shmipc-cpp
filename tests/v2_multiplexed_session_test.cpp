@@ -138,6 +138,19 @@ bool test_three_stream_round_trip() {
     servers.emplace(id, std::move(accepted.value));
   }
 
+  auto blocked_read =
+      std::async(std::launch::async, [&] { return clients[0].receive(5s); });
+  std::this_thread::sleep_for(20ms);
+  clients[0].set_read_deadline(shmipc::core::V2Stream::Clock::now());
+  if (blocked_read.wait_for(500ms) != std::future_status::ready ||
+      blocked_read.get().status.error !=
+          shmipc::core::V2SessionError::timeout ||
+      clients[0].receive(5s).status.error !=
+          shmipc::core::V2SessionError::timeout) {
+    return false;
+  }
+  clients[0].set_read_deadline(std::nullopt);
+
   for (auto &entry : servers) {
     const std::vector<std::uint8_t> response(
         3000U + entry.first * 1000U,
@@ -180,6 +193,173 @@ bool test_three_stream_round_trip() {
          ::access(config.buffer_path.c_str(), F_OK) != 0;
 }
 
+bool recycle_element(shmipc::core::V2SharedMemory &memory,
+                     const shmipc::shm::QueueElement &element) {
+  auto chain = memory.buffer_pool().adopt_chain(element.buffer_offset);
+  return chain && memory.buffer_pool().recycle_chain(std::move(chain.value)) ==
+                      shmipc::shm::BufferPoolError::none;
+}
+
+bool test_queue_full_retry_and_close_fallback() {
+  auto sockets = make_socket_pair();
+  auto dispatcher = shmipc::transport::start_epoll_dispatcher();
+  TestDirectory directory;
+  if (!dispatcher) {
+    return dispatcher.error == shmipc::transport::TransportError::unsupported;
+  }
+  if (!sockets || !directory.create()) {
+    return false;
+  }
+  const shmipc::core::V2ClientConfig config{directory.path + "/queue",
+                                            directory.path + "/buffer",
+                                            8U,
+                                            1U << 20U,
+                                            {{4096U, 60U}, {8192U, 40U}}};
+
+  std::promise<shmipc::core::V2HandshakeResult> promise;
+  auto future = promise.get_future();
+  std::thread server_thread([&] {
+    promise.set_value(shmipc::core::v2_server_handshake(sockets.value.server));
+  });
+  auto client = shmipc::core::start_v2_multiplexed_client_session(
+      std::move(sockets.value.client), config, dispatcher.value);
+  auto server = future.get();
+  server_thread.join();
+  if (!client || !server) {
+    return false;
+  }
+  auto opened = client.value.open_stream();
+  if (!opened) {
+    return false;
+  }
+  auto stream = std::move(opened.value);
+  const std::vector<std::uint8_t> payload(31U, 0x7aU);
+  for (std::size_t index = 0U; index < 8U; ++index) {
+    if (!stream.send(payload)) {
+      return false;
+    }
+  }
+
+  stream.set_write_deadline(shmipc::core::V2Stream::Clock::now());
+  const auto timeout_start = shmipc::core::V2Stream::Clock::now();
+  if (stream.send(payload).error != shmipc::core::V2SessionError::timeout ||
+      shmipc::core::V2Stream::Clock::now() - timeout_start > 100ms) {
+    return false;
+  }
+  stream.set_write_deadline(std::nullopt);
+
+  bool recycled = false;
+  std::thread consumer([&] {
+    std::this_thread::sleep_for(25ms);
+    const auto element = server.value.receive_queue().pop();
+    recycled = element && recycle_element(server.value, element.value);
+  });
+  const auto retry_start = shmipc::core::V2Stream::Clock::now();
+  const auto retried = stream.send(payload);
+  const auto retry_elapsed = shmipc::core::V2Stream::Clock::now() - retry_start;
+  consumer.join();
+  if (!retried || !recycled || retry_elapsed < 20ms || retry_elapsed > 150ms) {
+    return false;
+  }
+
+  std::array<std::uint8_t, shmipc::protocol::header_size> polling{};
+  if (!sockets.value.server.read_full(polling.data(), polling.size())) {
+    return false;
+  }
+  auto blocked_send =
+      std::async(std::launch::async, [&] { return stream.send(payload); });
+  std::this_thread::sleep_for(20ms);
+  if (!stream.close() ||
+      blocked_send.get().error != shmipc::core::V2SessionError::closed) {
+    return false;
+  }
+  std::array<std::uint8_t, shmipc::protocol::header_size + 4U> close_frame{};
+  if (!sockets.value.server.read_full(close_frame.data(), close_frame.size())) {
+    return false;
+  }
+  const auto header =
+      shmipc::protocol::decode_header(close_frame.data(), close_frame.size());
+  const auto close_id = (static_cast<std::uint32_t>(close_frame[8]) << 24U) |
+                        (static_cast<std::uint32_t>(close_frame[9]) << 16U) |
+                        (static_cast<std::uint32_t>(close_frame[10]) << 8U) |
+                        static_cast<std::uint32_t>(close_frame[11]);
+  if (!header ||
+      header.value.type != shmipc::protocol::EventType::stream_close ||
+      header.value.length != close_frame.size() || close_id != stream.id()) {
+    return false;
+  }
+
+  for (std::size_t index = 0U; index < 8U; ++index) {
+    const auto element = server.value.receive_queue().pop();
+    if (!element || !recycle_element(server.value, element.value)) {
+      return false;
+    }
+  }
+  if (!server.value.receive_queue().mark_not_working()) {
+    return false;
+  }
+  stream = {};
+  static_cast<void>(client.value.close());
+  static_cast<void>(dispatcher.value.stop());
+  return true;
+}
+
+bool test_session_failure_propagation() {
+  auto sockets = make_socket_pair();
+  auto dispatcher = shmipc::transport::start_epoll_dispatcher();
+  TestDirectory directory;
+  if (!dispatcher) {
+    return dispatcher.error == shmipc::transport::TransportError::unsupported;
+  }
+  if (!sockets || !directory.create()) {
+    return false;
+  }
+  const shmipc::core::V2ClientConfig config{directory.path + "/queue",
+                                            directory.path + "/buffer",
+                                            64U,
+                                            1U << 20U,
+                                            {{4096U, 60U}, {8192U, 40U}}};
+  std::promise<shmipc::core::V2MultiplexedServerSessionResult> promise;
+  auto future = promise.get_future();
+  std::thread server_thread([&] {
+    promise.set_value(shmipc::core::start_v2_multiplexed_server_session(
+        std::move(sockets.value.server), dispatcher.value));
+  });
+  auto client = shmipc::core::start_v2_multiplexed_client_session(
+      std::move(sockets.value.client), config, dispatcher.value);
+  auto server = future.get();
+  server_thread.join();
+  auto first =
+      client ? client.value.open_stream() : shmipc::core::V2StreamResult{};
+  auto second =
+      client ? client.value.open_stream() : shmipc::core::V2StreamResult{};
+  if (!client || !server || !first || !second) {
+    return false;
+  }
+  auto blocked_accept = std::async(
+      std::launch::async, [&] { return server.value.accept_stream(5s); });
+  if (!first.value.close() || !client.value.close()) {
+    return false;
+  }
+  const auto first_failure = first.value.receive(5s);
+  const auto second_failure = second.value.receive(5s);
+  if (blocked_accept.get().status.error !=
+          shmipc::core::V2SessionError::closed ||
+      first_failure.status.error != shmipc::core::V2SessionError::closed ||
+      first.value.wait_remote_close(5s).error !=
+          shmipc::core::V2SessionError::closed ||
+      second_failure.status.error != shmipc::core::V2SessionError::closed ||
+      client.value.open_stream().status.error !=
+          shmipc::core::V2SessionError::invalid_argument) {
+    return false;
+  }
+  first.value = {};
+  second.value = {};
+  static_cast<void>(server.value.close());
+  static_cast<void>(dispatcher.value.stop());
+  return true;
+}
+
 bool test_invalid_state() {
   shmipc::core::V2Stream stream;
   shmipc::core::V2MultiplexedClientSession client;
@@ -205,6 +385,14 @@ int main() {
   }
   if (!test_invalid_state()) {
     std::cerr << "v2 multiplexed invalid-state test failed\n";
+    return 1;
+  }
+  if (!test_queue_full_retry_and_close_fallback()) {
+    std::cerr << "v2 multiplexed queue-full/deadline test failed\n";
+    return 1;
+  }
+  if (!test_session_failure_propagation()) {
+    std::cerr << "v2 multiplexed failure propagation test failed\n";
     return 1;
   }
   return 0;

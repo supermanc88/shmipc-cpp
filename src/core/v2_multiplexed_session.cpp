@@ -5,6 +5,7 @@
 #include <deque>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
 #include <utility>
 
@@ -48,10 +49,14 @@ struct V2StreamState final {
   explicit V2StreamState(std::uint32_t stream_id) noexcept : id(stream_id) {}
 
   const std::uint32_t id;
+  std::mutex send_mutex{};
   std::mutex mutex{};
   std::condition_variable condition{};
   std::deque<std::vector<std::uint8_t>> messages{};
   V2SessionStatus failure{};
+  std::optional<V2Stream::Deadline> read_deadline{};
+  std::optional<V2Stream::Deadline> write_deadline{};
+  std::uint64_t deadline_generation{0U};
   bool local_closed{false};
   bool remote_closed{false};
 };
@@ -220,6 +225,8 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
       for (const auto &entry : streams) {
         current_streams.push_back(entry.second);
       }
+      streams.clear();
+      accepted.clear();
     }
     condition.notify_all();
     for (const auto &stream : current_streams) {
@@ -230,6 +237,15 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
         }
       }
       stream->condition.notify_all();
+    }
+  }
+
+  void erase_stream(std::uint32_t id,
+                    const std::shared_ptr<V2StreamState> &expected) {
+    std::lock_guard<std::mutex> lock(mutex);
+    const auto iterator = streams.find(id);
+    if (iterator != streams.end() && iterator->second == expected) {
+      streams.erase(iterator);
     }
   }
 
@@ -274,6 +290,67 @@ void recycle_published(V2MultiplexedSessionState &state,
   }
 }
 
+V2SessionStatus put_data_with_retry(V2MultiplexedSessionState &session,
+                                    V2StreamState &stream,
+                                    const shm::QueueElement &element) {
+  auto queued = session.shared_memory.send_queue().put(element);
+  for (std::size_t attempt = 0U;
+       queued == shm::QueueError::full && attempt < 10U; ++attempt) {
+    std::unique_lock<std::mutex> lock(stream.mutex);
+    if (!stream.failure) {
+      return stream.failure;
+    }
+    if (stream.local_closed || stream.remote_closed) {
+      return make_session_error(V2SessionError::closed);
+    }
+
+    const auto retry_at =
+        V2Stream::Clock::now() + std::chrono::milliseconds(10);
+    auto wake_at = retry_at;
+    bool deadline_first = false;
+    if (stream.write_deadline && *stream.write_deadline < wake_at) {
+      wake_at = *stream.write_deadline;
+      deadline_first = true;
+    }
+    const auto interrupted = stream.condition.wait_until(lock, wake_at, [&] {
+      return !stream.failure || stream.local_closed || stream.remote_closed;
+    });
+    if (interrupted) {
+      if (!stream.failure) {
+        return stream.failure;
+      }
+      return make_session_error(V2SessionError::closed);
+    }
+    if (deadline_first || (stream.write_deadline &&
+                           V2Stream::Clock::now() >= *stream.write_deadline)) {
+      return make_session_error(V2SessionError::timeout);
+    }
+    lock.unlock();
+    queued = session.shared_memory.send_queue().put(element);
+  }
+  return queued == shm::QueueError::none ? V2SessionStatus{}
+                                         : make_queue_error(queued);
+}
+
+V2SessionStatus send_stream_close_fallback(
+    std::uint32_t stream_id,
+    const std::shared_ptr<transport::EventConnection> &connection) {
+  auto frame = protocol::encode_header(
+      {static_cast<std::uint32_t>(stream_close_frame_size), v2_protocol_version,
+       protocol::EventType::stream_close});
+  if (!frame) {
+    auto status = make_session_error(V2SessionError::codec_error);
+    status.codec_error = frame.error;
+    return status;
+  }
+  frame.value.push_back(static_cast<std::uint8_t>(stream_id >> 24U));
+  frame.value.push_back(static_cast<std::uint8_t>(stream_id >> 16U));
+  frame.value.push_back(static_cast<std::uint8_t>(stream_id >> 8U));
+  frame.value.push_back(static_cast<std::uint8_t>(stream_id));
+  const auto result = connection->write(frame.value.data(), frame.value.size());
+  return result ? V2SessionStatus{} : make_transport_error(result);
+}
+
 } // namespace
 
 V2Stream::V2Stream(
@@ -283,11 +360,19 @@ V2Stream::V2Stream(
     : session_(std::move(session)), stream_(std::move(stream)),
       connection_(std::move(connection)) {}
 
-V2Stream::~V2Stream() { static_cast<void>(close()); }
+V2Stream::~V2Stream() {
+  static_cast<void>(close());
+  if (session_ && stream_) {
+    session_->erase_stream(stream_->id, stream_);
+  }
+}
 
 V2Stream &V2Stream::operator=(V2Stream &&other) noexcept {
   if (this != &other) {
     static_cast<void>(close());
+    if (session_ && stream_) {
+      session_->erase_stream(stream_->id, stream_);
+    }
     session_ = std::move(other.session_);
     stream_ = std::move(other.stream_);
     connection_ = std::move(other.connection_);
@@ -307,6 +392,7 @@ V2SessionStatus V2Stream::send(const std::uint8_t *data, std::size_t size) {
   if (!session_ || !stream_ || !connection_ || data == nullptr || size == 0U) {
     return make_session_error(V2SessionError::invalid_argument);
   }
+  std::lock_guard<std::mutex> send_lock(stream_->send_mutex);
   {
     std::lock_guard<std::mutex> lock(stream_->mutex);
     if (stream_->local_closed || stream_->remote_closed) {
@@ -329,11 +415,23 @@ V2SessionStatus V2Stream::send(const std::uint8_t *data, std::size_t size) {
     status.buffer_pool_error = published.error;
     return status;
   }
-  const auto queued = session_->shared_memory.send_queue().put(
+  {
+    std::lock_guard<std::mutex> lock(stream_->mutex);
+    if (stream_->local_closed || stream_->remote_closed) {
+      recycle_published(*session_, published.value.root_offset);
+      return make_session_error(V2SessionError::closed);
+    }
+    if (!stream_->failure) {
+      recycle_published(*session_, published.value.root_offset);
+      return stream_->failure;
+    }
+  }
+  const auto queued = put_data_with_retry(
+      *session_, *stream_,
       {stream_->id, published.value.root_offset, stream_opened});
-  if (queued != shm::QueueError::none) {
+  if (!queued) {
     recycle_published(*session_, published.value.root_offset);
-    return make_queue_error(queued);
+    return queued;
   }
   return notify_peer(*session_, connection_);
 }
@@ -347,11 +445,27 @@ V2Stream::MessageResult V2Stream::receive(std::chrono::milliseconds timeout) {
     return {{}, make_session_error(V2SessionError::invalid_argument)};
   }
   std::unique_lock<std::mutex> lock(stream_->mutex);
-  if (!stream_->condition.wait_for(lock, timeout, [&] {
-        return !stream_->messages.empty() || !stream_->failure ||
-               stream_->local_closed || stream_->remote_closed;
-      })) {
-    return {{}, make_session_error(V2SessionError::timeout)};
+  const auto now = Clock::now();
+  const auto maximum_timeout =
+      std::chrono::duration_cast<std::chrono::milliseconds>(Deadline::max() -
+                                                            now);
+  const auto caller_deadline =
+      timeout >= maximum_timeout ? Deadline::max() : now + timeout;
+  const auto ready = [&] {
+    return !stream_->messages.empty() || !stream_->failure ||
+           stream_->local_closed || stream_->remote_closed;
+  };
+  while (!ready()) {
+    auto deadline = caller_deadline;
+    if (stream_->read_deadline && *stream_->read_deadline < deadline) {
+      deadline = *stream_->read_deadline;
+    }
+    const auto generation = stream_->deadline_generation;
+    if (!stream_->condition.wait_until(lock, deadline, [&] {
+          return ready() || stream_->deadline_generation != generation;
+        })) {
+      return {{}, make_session_error(V2SessionError::timeout)};
+    }
   }
   if (stream_->local_closed) {
     return {{}, make_session_error(V2SessionError::closed)};
@@ -365,6 +479,43 @@ V2Stream::MessageResult V2Stream::receive(std::chrono::milliseconds timeout) {
     return {{}, stream_->failure};
   }
   return {{}, make_session_error(V2SessionError::closed)};
+}
+
+void V2Stream::set_deadline(std::optional<Deadline> deadline) noexcept {
+  if (!stream_) {
+    return;
+  }
+  {
+    std::lock_guard<std::mutex> lock(stream_->mutex);
+    stream_->read_deadline = deadline;
+    stream_->write_deadline = deadline;
+    ++stream_->deadline_generation;
+  }
+  stream_->condition.notify_all();
+}
+
+void V2Stream::set_read_deadline(std::optional<Deadline> deadline) noexcept {
+  if (!stream_) {
+    return;
+  }
+  {
+    std::lock_guard<std::mutex> lock(stream_->mutex);
+    stream_->read_deadline = deadline;
+    ++stream_->deadline_generation;
+  }
+  stream_->condition.notify_all();
+}
+
+void V2Stream::set_write_deadline(std::optional<Deadline> deadline) noexcept {
+  if (!stream_) {
+    return;
+  }
+  {
+    std::lock_guard<std::mutex> lock(stream_->mutex);
+    stream_->write_deadline = deadline;
+    ++stream_->deadline_generation;
+  }
+  stream_->condition.notify_all();
 }
 
 V2SessionStatus V2Stream::close() {
@@ -388,13 +539,18 @@ V2SessionStatus V2Stream::close() {
   if (!failure) {
     return failure;
   }
+  std::lock_guard<std::mutex> send_lock(stream_->send_mutex);
   V2SessionStatus status{};
   if (send_close) {
     const auto queued = session_->shared_memory.send_queue().put(
         {stream_->id, 0U, stream_closed});
-    status = queued == shm::QueueError::none
-                 ? notify_peer(*session_, connection_)
-                 : make_queue_error(queued);
+    if (queued == shm::QueueError::none) {
+      status = notify_peer(*session_, connection_);
+    } else if (queued == shm::QueueError::full) {
+      status = send_stream_close_fallback(stream_->id, connection_);
+    } else {
+      status = make_queue_error(queued);
+    }
   }
   return status;
 }
