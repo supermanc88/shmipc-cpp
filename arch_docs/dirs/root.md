@@ -2,7 +2,7 @@
 
 ## Summary
 
-当前仓库已建立 C++17/CMake 可验证骨架，并已加入控制协议 codec、queue 双架构和 buffer 显式布局访问器。静态 library target、CTest、编译告警/Sanitizer、安装导出及固定 Go oracle 均已接入；共享内存分配器和并发 queue 算法尚未开始。
+当前仓库已建立 C++17/CMake 可验证骨架，并已加入控制协议 codec、queue/buffer 显式布局访问器及 file/memfd RAII mapping。静态 library target、CTest、编译告警/Sanitizer、安装导出及固定 Go oracle 均已接入；共享内存分配器和并发 queue 算法尚未开始。
 
 ## Directory Contents（深度=1）
 
@@ -16,7 +16,7 @@
 | `cmake/` | 目录 | ✅ | 工程选项与 package config 模板 |
 | `docs/` | 目录 | ✅ | C++ 移植计划与项目标准工作流 |
 | `include/shmipc/` | 目录 | ✅ | 公共 C++ API；当前为版本接口 |
-| `src/` | 目录 | ✅ | library 实现；包含版本、control codec 与 queue/buffer layout |
+| `src/` | 目录 | ✅ | library 实现；包含版本、control codec、共享布局与 mapping |
 | `tests/` | 目录 | ✅ | CTest 测试 target |
 | `third_party/` | 目录 | ✅ | 上游参考实现聚合目录 |
 | `tools/` | 目录 | ✅ | Go oracle 等开发验证工具 |
@@ -36,6 +36,8 @@
 - 2026-08-18：提交 `603933e` 的 GitHub Actions run `32122127419` 七项作业全部成功，`S-0101` 完成。
 - `src/shm/queue_layout.cpp:81-192` 实现双架构偏移、region size 和 header/element 边界访问；`tests/queue_layout_test.cpp:48-175` 验证两套 golden 与错误路径。
 - `src/shm/buffer_layout.cpp:82-225` 实现 manager/list/slice 布局；Go 双视图 probe 证明 `+20/+24` 是 creator/mapper 独立 counter。
+- 提交 `ed4c7a8` 的 GitHub Actions run `32125329954` 七项作业全部成功，M1 完成。
+- `src/shm/shared_memory_region.cpp:100-315` 实现 move-only file/memfd mapping；`tests/shared_memory_region_test.cpp:21-137` 已在本机 AppleClang 和远端 GCC 8.5 Debug/ASan 通过。
 
 ## Guesses & Uncertainties
 

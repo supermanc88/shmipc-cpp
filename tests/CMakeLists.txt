@@ -50,6 +50,12 @@ target_compile_definitions(
 )
 add_test(NAME shmipc.buffer_layout COMMAND shmipc_buffer_layout_test)
 
+add_executable(shmipc_shared_memory_region_test shared_memory_region_test.cpp)
+target_link_libraries(shmipc_shared_memory_region_test PRIVATE shmipc::shmipc)
+target_include_directories(shmipc_shared_memory_region_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+shmipc_apply_project_options(shmipc_shared_memory_region_test)
+add_test(NAME shmipc.shared_memory_region COMMAND shmipc_shared_memory_region_test)
+
 if(SHMIPC_ENABLE_GO_ORACLE_TESTS)
     find_program(SHMIPC_GO_EXECUTABLE go)
     if(NOT SHMIPC_GO_EXECUTABLE)

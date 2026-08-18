@@ -2,7 +2,7 @@
 
 ## Summary
 
-承载共享内存布局、映射与数据平面实现。当前 `S-0102..0103` 已实现 queue 双架构及 buffer manager/list/slice 显式字节访问器；尚未实现 mmap/memfd RAII、原子 queue 算法或 buffer allocator。
+承载共享内存布局、映射与数据平面实现。当前 `S-0102..0104` 已实现 queue/buffer 显式字节访问与损坏链验证，`S-0201` 已实现 file/memfd RAII mapping；尚未实现原子 queue 算法或 buffer allocator。
 
 ## Directory Contents
 
@@ -12,6 +12,8 @@
 | `queue_layout.cpp` | C++ 实现 | ✅ | native-endian `memcpy` 访问、region size 与边界校验 |
 | `buffer_layout.hpp` | 内部头文件 | ✅ | manager/list/slice 类型、角色 counter 和访问接口 |
 | `buffer_layout.cpp` | C++ 实现 | ✅ | buffer native-endian 访问与 checked region size |
+| `shared_memory_region.hpp` | 内部头文件 | ✅ | move-only mapping、错误模型及显式 FD/路径所有权 |
+| `shared_memory_region.cpp` | C++ 实现 | ✅ | file/memfd 创建、映射和 RAII 清理 |
 
 ## Layout
 
@@ -40,6 +42,8 @@
 - 当前 helper 是普通 byte accessor，不提供跨进程原子性；原子访问和内存序属于 `S-0204`。
 - buffer slice 必须满足 `data_start <= capacity` 且 `size <= capacity - data_start`。
 - 静态链 validator 最多访问 `capacity` 个节点；offset 必须落在 region 内并按 slice stride 对齐，终止节点必须等于 tail。
+- file mapping 创建端默认拥有 unlink 责任，mapper 仅 munmap；文件 FD 在 mmap 后关闭，memfd FD 则由 region 保留至销毁。
+- borrowed memfd 会先复制 FD，transferred memfd 从调用入口起接管 FD；两种路径都设置/保留 close-on-exec 语义。
 
 ## Evidence
 
@@ -53,6 +57,8 @@
 - `tests/buffer_layout_test.cpp:50-177`：buffer golden 与错误路径。
 - `tools/go_oracle/control_header_oracle_test.gotxt:250-344`：真实 creator/mapper pointer offsets 及独立 counter 行为。
 - `src/shm/buffer_layout.cpp:199-240` 与 `tests/data/corpus/layout_corruption.txt`：有界链验证和 9 类损坏输入。
+- `src/shm/shared_memory_region.cpp:100-315`：move-only 清理、file/memfd 系统调用及 FD 所有权。
+- `tests/shared_memory_region_test.cpp:21-137`：文件双视图、创建端 unlink、move 和 Linux memfd 借用/转移测试；本机与远端 Debug/ASan 全部通过。
 
 ## Guesses & Uncertainties
 

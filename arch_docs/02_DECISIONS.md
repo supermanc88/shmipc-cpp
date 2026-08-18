@@ -73,7 +73,7 @@
 
 ### D-011：queue 布局按目标架构显式选择，普通访问不构造映射区对象
 
-- 状态：`S-0102` 本机与远端已验证，待批次云端证据
+- 状态：已验证；提交 `ed4c7a8` 的 run `32125329954` 全部成功
 - 布局：24 字节 header；amd64 为 `capacity/head/tail/working = 0/4/12/20`，arm64 为 `0/8/16/4`；12 字节 element 从 offset 24 起依次为三个 uint32。
 - 决策：使用 `memcpy` 在映射字节和本机整数间转换，避免未对齐解引用、strict-aliasing 与 C++ struct padding；访问前校验 capacity、region size 和 slot。
 - 边界：本切片只定义普通布局访问。跨进程原子 load/store、内存序和 MPSC 算法必须在 `S-0204` 单独决策，不能把这些 helpers 当作原子操作。
@@ -82,7 +82,7 @@
 
 ### D-012：buffer list 的 `+20/+24` 是角色隔离 counter，C++ 必须保留
 
-- 状态：行为已验证；C++ layout 本机与远端已验证，待批次云端证据
+- 状态：已验证；提交 `ed4c7a8` 的 run `32125329954` 全部成功
 - 事实：`support arm64` 提交 `8ab38be` 将原来位于 `+20/+28` 的两个 uint64 push/pop counters 改为 int32 counter；创建视图绑定 `+20`，映射视图绑定 `+24`。
 - 实验：同一内存建立 creator/mapper 两视图后，creator pop 只使 `+20` 变为 1，mapper pop 只使 `+24` 变为 1；双方各自 push 后各自 counter 归零。
 - 决策：C++ 以 `BufferListRole::creator/mapper` 显式选择 counter，不能把两者合并，也不能把 `+24` 当作待修复 typo。每端用自己的 outstanding counter 参与关闭前归还检查。
@@ -91,12 +91,21 @@
 
 ### D-013：损坏 free-list 使用有界遍历和确定错误分类
 
-- 状态：本机与远端已验证，待批次云端证据
+- 状态：已验证；提交 `ed4c7a8` 的 run `32125329954` 全部成功
 - 决策：映射后的静态完整性检查最多访问 `capacity` 个节点；head/tail/next 必须在 buffer region 内且按 `20 + capacity_per_buffer` stride 对齐。
 - 终止条件：无 next flag 的节点必须等于 header tail；遍历 capacity 个节点仍未终止则分类为 cycle。
 - slice 条件：每个节点 capacity 必须等于 list capacity-per-buffer，且 `data_start + size` 用减法形式检查以避免溢出。
 - 边界：validator 不提供并发快照语义，不应在对端正修改 free-list 时运行；并发算法另行实现和验证。
 - 证据：`src/shm/buffer_layout.cpp:199-240`、`tests/data/corpus/layout_corruption.txt`、`tests/buffer_layout_test.cpp:185-289`。
+
+### D-014：mapping 以 move-only owner 和显式资源责任建模
+
+- 状态：`S-0201` 本机与远端已验证，待批次云端证据
+- 决策：`SharedMemoryRegion` 唯一拥有 mapping，不可复制但可移动；析构/`reset` 负责 `munmap`，memfd 还负责关闭 descriptor。
+- FD 语义：`borrowed` 先复制 descriptor，调用者保留原所有权；`transferred` 从函数入口接管，后续成功或失败都关闭。所有创建/复制 descriptor 使用 close-on-exec。
+- 文件语义：创建使用 `O_EXCL`，避免静默截断同名共享区；创建者默认 unlink，mapper 永不隐式删除路径。相较 Go 按 map type 统一删除路径，这是不影响 wire/layout 的生命周期加固。
+- 平台边界：file `MAP_SHARED` 路径支持当前 POSIX 开发/目标环境；memfd 创建仅在 Linux 编译，其他平台返回 `unsupported`。
+- 证据：`src/shm/shared_memory_region.hpp:9-110`、`src/shm/shared_memory_region.cpp:20-315`、`tests/shared_memory_region_test.cpp:21-137`；本机 AppleClang Debug/ASan+UBSan 与远端 GCC 8.5 Debug/ASan 6/6 CTest 通过。
 
 ### D-004：v2 和 v3 是两个必须分别验收的握手路径
 
@@ -163,3 +172,4 @@
 - 2026-08-18：提交 `603933e` 的 GitHub Actions run `32122127419` 七项作业全部成功，`S-0101` 转为已验证；新增 `S-0102` queue 显式布局访问器与双架构 golden，Go oracle 分别在 arm64/amd64 路径通过，C++ 本机与远端 GCC 8.5 Debug/ASan 通过。证据：`src/shm/queue_layout.*`、`tests/data/golden/queue_layout.txt`、`tests/queue_layout_test.cpp`；影响文档：索引、概要、本文件、root/shm/oracle 目录、关系图、计划、工作流、回归指南和功能矩阵。
 - 2026-08-18：通过提交历史和 Go creator/mapper 双视图实验关闭 `bufferList.counter +20/+24` 不确定项，确认其为 arm64 兼容后角色隔离的 outstanding counters；新增 manager/list/slice C++ 显式布局访问器。证据：上游 commit `8ab38be`、`tools/go_oracle/control_header_oracle_test.gotxt:250-344`、`src/shm/buffer_layout.*`、`tests/buffer_layout_test.cpp`；影响文档：索引、概要、本文件、root/shm/oracle 目录、关系图、计划、工作流、回归指南和功能矩阵。
 - 2026-08-18：新增有界 buffer free-list validator 和 9 类固定损坏输入 corpus，确定性拒绝截断、溢出、非法 offset、循环、错误 tail、slice capacity 与 data range。证据：`src/shm/buffer_layout.cpp:199-240`、`tests/data/corpus/layout_corruption.txt`、`tests/buffer_layout_test.cpp:185-289`；影响文档：索引、本文件、shm 目录/文件、计划、回归指南和功能矩阵。
+- 2026-08-18：提交 `ed4c7a8` 的 GitHub Actions run `32125329954` 七项作业全部成功，M1 完成；新增 `S-0201` move-only file/memfd mapping，明确 creator/mapper 路径清理和 borrowed/transferred FD 所有权。本机 AppleClang 与远端 GCC 8.5 Debug/Sanitizer 通过。证据：`src/shm/shared_memory_region.*`、`tests/shared_memory_region_test.cpp`；影响文档：索引、概要、本文件、root/shm 目录、mapping 文件、关系图、计划、回归指南和功能矩阵。

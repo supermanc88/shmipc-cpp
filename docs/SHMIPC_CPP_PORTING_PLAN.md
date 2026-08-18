@@ -6,7 +6,7 @@
 |---|---|
 | 项目类型 | Go 到 C++ 的跨语言、跨运行时重实现 |
 | 参考实现 | `third_party/shmipc-go` commit `55c241eea321071278d1ee7f7c46292d23e50a5b` |
-| 当前阶段 | M1 `S-0101` 已完成；`S-0102..0104` 已通过本机与远端门禁，形成三提交稳定批次，待统一 push 后补云端证据 |
+| 当前阶段 | M1 已由 run `32125329954` 完整验收；M2 `S-0201` 已通过本机与远端门禁，待批次云端证据 |
 | 已确认目标 | 在 Linux 上提供现代 C++ 共享内存 IPC 库，并与固定 Go 实现双向互通；Go 仅用于开发验收 |
 | 流程依据 | 用户提供的《软件项目端到端标准工作流程》 |
 | 架构依据 | [上游架构概要](../arch_docs/01_OVERVIEW.md) 与 [决策/风险](../arch_docs/02_DECISIONS.md) |
@@ -157,9 +157,11 @@ tools/
 切片：
 
 - `S-0101`（已验证）：控制 header、事件枚举、metadata 和 fallback 编解码；run `32122127419` 七项作业全部成功。
-- `S-0102`（本地与远端已验证，待云端）：queue header/element 的 amd64 与 arm64 显式布局访问器。
-- `S-0103`（本地与远端已验证，待云端）：buffer manager/list/slice 显式布局；实验确认 creator counter `+20`、mapper counter `+24` 是角色隔离计数。
-- `S-0104`（本机与远端已验证，待云端）：损坏输入 corpus 覆盖截断、声明超长、size overflow、非法/未对齐 offset、循环链、tail/capacity/data-range 不一致。
+- `S-0102`（已验证）：queue header/element 的 amd64 与 arm64 显式布局访问器。
+- `S-0103`（已验证）：buffer manager/list/slice 显式布局；实验确认 creator counter `+20`、mapper counter `+24` 是角色隔离计数。
+- `S-0104`（已验证）：损坏输入 corpus 覆盖截断、声明超长、size overflow、非法/未对齐 offset、循环链、tail/capacity/data-range 不一致。
+
+状态：**已完成**。提交 `ed4c7a8` 的 GitHub Actions run `32125329954` 七项作业全部成功。
 
 退出条件：所有 byte golden 与 Go 一致；布局不确定项有实验结论/ADR；fuzz smoke 与 sanitizer 不崩溃。
 
@@ -167,7 +169,7 @@ tools/
 
 切片：
 
-- `S-0201`：RAII mmap/memfd/file mapping。
+- `S-0201`（本地与远端已验证，待云端）：move-only RAII mmap/memfd/file mapping，显式区分 FD 借用/转移及文件创建者/mapper 清理责任。
 - `S-0202`：分级 buffer list 单进程分配回收。
 - `S-0203`：双进程跨语言分配回收与链式 slice。
 - `S-0204`：MPSC queue、working flag 和批量消费。
@@ -293,14 +295,16 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-M0-003`：提交 `eeae84e` 的 GitHub Actions run [`32116398237`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32116398237) 总结论 success；GCC/Clang × Debug/Release、ASan+UBSan、TSan 六项均执行并通过，常规四项安装验证通过。
 - `E-M0-004`：固定 commit runner 与 overlay oracle 在本机通过；10 类 control-header golden（SHA-256 `ee6379a976c47c4d81c894ecf110132884ee8e48086091338cb17a8d8765fdfa`）被 Go `header.encode` 和 C++ test 共同验证，远端 GCC 8.5 Debug/ASan 两项 C++ 测试通过；提交 `34ef510` 的 GitHub Actions run [`32119710781`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32119710781) 中 Go oracle 与完整七项矩阵全部成功。
 - `E-M1-001`：生产 codec 覆盖 8 字节 header、事件 0..9、v2/v3 metadata 与 fallback；三份 golden 同时由固定 Go 编码器和 C++ round-trip 使用，并覆盖截断、非法字段、错误事件、尾随字节和帧上限。macOS AppleClang Debug/ASan+UBSan 与远端 Linux GCC 8.5 Debug/ASan 均通过；提交 `603933e` 的 GitHub Actions run [`32122127419`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32122127419) 七项作业全部成功。
-- `E-M1-002`：queue golden（SHA-256 `3c2dba47b214fe158582c7cb31ec9b74fa060819d848a87b253c1cf83d721697`）锁定 amd64 的 `cap/head/tail/working = 0/4/12/20` 与 arm64 的 `0/8/16/4`，element 均为 24 字节后连续三个 uint32。Go oracle 分别在 Darwin arm64 与 amd64 运行路径通过；C++ 双布局测试及远端 Linux GCC 8.5 Debug/ASan 通过，云端证据随下一批 push 补录。
+- `E-M1-002`：queue golden（SHA-256 `3c2dba47b214fe158582c7cb31ec9b74fa060819d848a87b253c1cf83d721697`）锁定 amd64 的 `cap/head/tail/working = 0/4/12/20` 与 arm64 的 `0/8/16/4`，element 均为 24 字节后连续三个 uint32。Go oracle 分别在 Darwin arm64 与 amd64 运行路径通过；C++ 双布局测试、远端 Linux GCC 8.5 Debug/ASan 及 run `32125329954` 通过。
 - `E-M1-003`：buffer layout golden（SHA-256 `83a090638c0096c7619c66f22b6621ae6da6b77343150bacbfde4a99d6b6af5b`）锁定 manager 8 字节、list 36 字节、slice 20 字节。固定 Go 实验在同一内存上建立 creator/mapper 两视图，证明 pop/push 分别只修改 `+20/+24` 并独立归零；arm64 与 amd64 Go 路径、C++ accessors、远端 GCC 8.5 Debug/ASan 均通过。
 - `E-M1-004`：固定损坏布局 corpus（SHA-256 `342f559d8106b538e8b41bc562041bb9dbaeb34b3e969275daccc1fc560149e5`）含 9 类失败模式；`validate_buffer_list_chain` 最多遍历 capacity 个节点，确定性分类截断、溢出、非法 offset、cycle、错误 tail、slice capacity 与 data range。本机 AppleClang Debug/ASan+UBSan 及远端 GCC 8.5 Debug/ASan 通过。
+- `E-M1-005`：提交 `ed4c7a8` 的 GitHub Actions run `32125329954` 七项作业全部成功，M1 退出门禁通过。
+- `E-M2-001`：move-only mapping owner 覆盖 file 双视图、创建端 unlink、memfd create/map 和 borrowed/transferred FD；本机 AppleClang Debug/ASan+UBSan 与远端 GCC 8.5 Debug/ASan 6/6 通过。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. 创建 `S-0104` 本地提交，用户统一 push `c58ceaa` 起的三个 M1 布局提交。
-2. 检查 GitHub Actions 七项矩阵，补齐 `S-0102..0104` 云端 evidence。
-3. M1 退出门禁通过后进入 `S-0201` RAII mmap/memfd/file mapping。
+1. 创建 `S-0201` 本地提交并纳入后续批次 push。
+2. 进入 `S-0202`，实现分级 buffer list 的单进程分配回收。
+3. 批次 push 后检查 GitHub Actions 七项矩阵并补齐 M2 云端 evidence。

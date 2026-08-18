@@ -118,6 +118,7 @@
 - C++ 控制协议入口：`src/protocol/control_codec.hpp`。当前提供 header、事件 0..9、v2/v3 metadata 与 fallback 的大端编解码；以明确错误分类拒绝截断、非法字段、错误事件、尾随字节和超过默认 64 MiB 上限的帧。该接口暂为内部 API。
 - C++ queue 布局入口：`src/shm/queue_layout.hpp`。以 `memcpy` 对 mmap 字节做本机字节序访问，显式区分 amd64 与 arm64 header offsets，并在任何字段访问前校验 capacity、region size、slot 和 arm64 manager 对齐；并发原子语义留到 `S-0204`。
 - C++ buffer 布局入口：`src/shm/buffer_layout.hpp`。显式定义 8 字节 manager、36 字节 list 与 20 字节 slice header；creator 与 mapper 的 outstanding counters 分别位于 `+20/+24`，普通访问使用 `memcpy` 并校验字段和 region size。
+- C++ mapping 入口：`src/shm/shared_memory_region.hpp`。move-only owner 统一管理 `munmap`、memfd descriptor 与创建端路径清理；文件 mapper 不 unlink，memfd API 显式区分 borrowed/transferred descriptor。
 - Go oracle 入口：`go run tools/go_oracle/run_control_header_oracle.go`；严格校验 submodule commit 后，以 overlay 调用上游 header、metadata 与 fallback 编码器核对三份 golden。CMake 可通过 `SHMIPC_ENABLE_GO_ORACLE_TESTS=ON` 将其加入 CTest。
 - C++ CI 入口：`.github/workflows/ci.yml`。Ubuntu 24.04 上运行 GCC/Clang × Debug/Release 四项构建、CTest 和安装；另以 GCC 分别运行 ASan+UBSan 与 TSan，并以 Go 1.25.10 运行 control-protocol oracle。
 - 本地测试：`go test ./...`；上游测试实际依赖 Linux，macOS 不构成有效通过环境。
@@ -128,9 +129,10 @@
 - CI 云端验证：提交 `eeae84e` 的首轮 GitHub Actions（run `32116398237`）成功；GCC/Clang × Debug/Release、ASan+UBSan、TSan 六个作业均实际执行并通过，常规四项的安装验证也通过。
 - Go oracle 云端验证：提交 `34ef510` 的 GitHub Actions run [`32119710781`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32119710781) 成功；新增 Go 1.25.10 作业及原有六项矩阵共七项全部通过。
 - `S-0101` 验证：三份 fixture 同时经固定 Go 编码器与 C++ production codec 验证；本机与远端门禁通过，提交 `603933e` 的 GitHub Actions run [`32122127419`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32122127419) 七项作业全部成功。
-- `S-0102` 验证：Go oracle 在 Darwin arm64 与 amd64 运行路径分别验证真实 queue 指针布局；C++ 同时消费两行 golden，远端 GCC 8.5 Debug/ASan 通过。云端证据随下一批 push 补录。
+- `S-0102` 验证：Go oracle 在 Darwin arm64 与 amd64 运行路径分别验证真实 queue 指针布局；C++ 同时消费两行 golden，远端 GCC 8.5 Debug/ASan 通过；run `32125329954` 云端通过。
 - `S-0103` 验证：Go 双视图实验确认 creator/mapper pop 只增加各自 `+20/+24` counter，push 后独立归零；两架构 Go oracle、C++ layout tests 及远端 GCC 8.5 Debug/ASan 通过。
-- `S-0104` 验证：buffer free-list validator 以 capacity 限制遍历次数，并通过固定 corpus 分类截断、溢出、非法 offset、cycle、tail/capacity/data-range 损坏；本机与远端 GCC 8.5 Debug/ASan 已通过，待批次云端证据。
+- `S-0104` 验证：buffer free-list validator 以 capacity 限制遍历次数，并通过固定 corpus 分类截断、溢出、非法 offset、cycle、tail/capacity/data-range 损坏；本机、远端及 run `32125329954` 已通过，M1 完成。
+- `S-0201` 验证：file/memfd RAII mapping 已通过本机 AppleClang Debug/ASan+UBSan，以及远端 Linux GCC 8.5 Debug/ASan；Linux 测试实际执行 memfd 创建与 FD 借用/转移路径，待批次云端证据。
 - 时钟注意：本机当前比远端快约 2 分 20 秒；同步时不得保留本机文件时间戳，否则 Ninja 会反复重新生成。标准命令见 `PROJECT_WORKFLOW.md`。
 - Linux 运行基线：本机用 Go 1.25.10 交叉编译固定提交的 amd64 测试二进制，rsync 至远端后完整测试 `PASS`、退出码 0；覆盖 v2、v3/memfd、队列、Stream/Session 和热重启路径。
 - CI：`.github/workflows/tests.yaml` 在 Ubuntu 运行单测/benchmark，并在自托管 Linux 上覆盖 Go 1.21–1.25；`.github/workflows/pre_check.yaml` 运行许可证、拼写和 golangci-lint。

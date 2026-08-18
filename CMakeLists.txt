@@ -25,6 +25,7 @@ add_library(
     src/protocol/control_codec.cpp
     src/shm/buffer_layout.cpp
     src/shm/queue_layout.cpp
+    src/shm/shared_memory_region.cpp
     src/version.cpp
 )
 add_library(shmipc::shmipc ALIAS shmipc)
