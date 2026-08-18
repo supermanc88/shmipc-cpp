@@ -193,6 +193,115 @@ func TestV2ClientSessionInterop(t *testing.T) {
 	}
 }
 
+func TestV2ServerSessionInterop(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("full shmipc Session initialization requires Linux")
+	}
+	helper := os.Getenv("SHMIPC_CPP_V2_SERVER_SESSION_HELPER")
+	if helper == "" {
+		t.Fatal("SHMIPC_CPP_V2_SERVER_SESSION_HELPER is not set")
+	}
+
+	run := func(t *testing.T, scenario string, interact func(*Stream, string) error) {
+		t.Helper()
+		directory := t.TempDir()
+		signal := filepath.Join(directory, "close-observed")
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer listener.Close()
+		port := listener.Addr().(*net.TCPAddr).Port
+		command := exec.Command(helper, "server", "127.0.0.1", strconv.Itoa(port), scenario, signal)
+		var helperOutput bytes.Buffer
+		command.Stdout = &helperOutput
+		command.Stderr = &helperOutput
+		if err := command.Start(); err != nil {
+			t.Fatal(err)
+		}
+		connection, err := listener.Accept()
+		if err != nil {
+			command.Process.Kill()
+			t.Fatal(err)
+		}
+		config := DefaultConfig()
+		config.LogOutput = io.Discard
+		config.InitializeTimeout = 5 * time.Second
+		config.QueueCap = 64
+		config.ShareMemoryBufferCap = 1 << 20
+		config.QueuePath = filepath.Join(directory, "go-server-queue")
+		config.ShareMemoryPathPrefix = filepath.Join(directory, "go-server")
+		config.BufferSliceSizes = []*SizePercentPair{{Size: 4096, Percent: 60}, {Size: 8192, Percent: 40}}
+		session, sessionErr := newSession(config, connection, true)
+		if sessionErr == nil {
+			var stream *Stream
+			stream, sessionErr = session.OpenStream()
+			if sessionErr == nil && stream.StreamID() != 2 {
+				sessionErr = fmt.Errorf("first Go stream ID = %d, want 2", stream.StreamID())
+			}
+			if sessionErr == nil {
+				sessionErr = interact(stream, signal)
+			}
+		}
+		if sessionErr != nil {
+			connection.Close()
+			command.Process.Kill()
+		}
+		helperErr := command.Wait()
+		if session != nil {
+			if closeErr := session.Close(); sessionErr == nil && closeErr != nil {
+				sessionErr = closeErr
+			}
+		}
+		if sessionErr != nil || helperErr != nil {
+			t.Fatalf("Go client=%v C++ server=%v helper output=%s", sessionErr, helperErr, helperOutput.String())
+		}
+	}
+
+	t.Run("MultiMessageAndCppClose", func(t *testing.T) {
+		run(t, "roundtrip", func(stream *Stream, signal string) error {
+			requests := [][]byte{
+				bytes.Repeat([]byte{0x11}, 31),
+				bytes.Repeat([]byte{0x22}, 20000),
+				bytes.Repeat([]byte{0x33}, 7000),
+			}
+			for index, request := range requests {
+				if _, err := stream.Write(request); err != nil {
+					return fmt.Errorf("write request %d: %w", index, err)
+				}
+			}
+			responses := [][]byte{
+				bytes.Repeat([]byte{0x44}, 47),
+				bytes.Repeat([]byte{0x55}, 17000),
+				bytes.Repeat([]byte{0x66}, 9000),
+			}
+			for index, expected := range responses {
+				actual := make([]byte, len(expected))
+				if _, err := io.ReadFull(stream, actual); err != nil {
+					return fmt.Errorf("read response %d: %w", index, err)
+				}
+				if !bytes.Equal(actual, expected) {
+					return fmt.Errorf("C++ response mismatch")
+				}
+			}
+			one := make([]byte, 1)
+			if _, err := stream.Read(one); err == nil {
+				return fmt.Errorf("expected C++ remote close")
+			}
+			return os.WriteFile(signal, []byte("observed"), 0o600)
+		})
+	})
+
+	t.Run("GoClose", func(t *testing.T) {
+		run(t, "remote-close", func(stream *Stream, _ string) error {
+			if _, err := stream.Write(bytes.Repeat([]byte{0x11}, 31)); err != nil {
+				return err
+			}
+			return stream.Close()
+		})
+	})
+}
+
 func TestBufferPoolInterop(t *testing.T) {
 	helper := os.Getenv("SHMIPC_CPP_BUFFER_POOL_HELPER")
 	if helper == "" {

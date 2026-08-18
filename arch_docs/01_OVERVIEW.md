@@ -144,6 +144,7 @@
 - `S-0205` 验证：reserve/write/publish、单 slice 零拷贝、跨 slice owned copy、peek、byte/string/discard、pin/release 与析构回收已通过本机 Go oracle 10/10、ASan+UBSan 9/9、TSan 9/9，以及远端 GCC 8.5 Debug/ASan 9/9；提交 `c1c23f9` 的 run `32134325132` 七项作业全部成功，M2 完成。
 - `S-0302` 验证：C++ 单元测试覆盖 v2 成功、queue 方向、buffer 角色、错误/截断 header、缺失路径、已有文件与失败回滚；远端 Linux Go↔C++ 两方向真实 `newSession` 初始化连续 50/50，GCC 8.5 Debug/ASan 全量 CTest 通过；提交 `3f2db07` 的 run `32151993614` 七项门禁全部成功。
 - `S-0303` 验证：C++ client 与 C++ test peer、真实 Go server 均完成 20,000 字节请求和 17,000 字节响应，覆盖跨 slice adopt/recycle、Polling、receive timeout 与双向 close；远端 GCC 8.5 Debug/ASan 及 Go 互操作 50/50 通过；提交 `050d7da` 的 run `32154121843` 七项门禁全部成功，Go protocol oracle 为 14/14。
+- `S-0304` 验证：C++ server 动态绑定 Go client 首个 Stream ID 2，三条请求/响应覆盖 20,000/17,000 字节跨 slice、批量 Polling 与两方向 close；远端 Debug/ASan 14/14、普通互操作 300/300、ASan helper 50/50 通过，等待云端门禁。压力测试同时证明 v2 无 ACK 时 mapper 必须允许 creator 已有活动 allocation。
 - `S-0301` 验证：socket 基础层覆盖 partial/EOF/would-block、TCP/Unix 和路径所有权；Linux epoll 层覆盖 partial frame 保留、writev、EAGAIN 背压、并发写无交错、关闭原因/唯一通知、callback 契约和缓冲上限。远端 GCC 8.5 Debug/Release/ASan 11/11、专项连续 100 次通过；提交 `17a668e` 的 run `32148166394` 七项门禁全部成功，切片关闭。
 - 时钟注意：本机当前比远端快约 2 分 20 秒；同步时不得保留本机文件时间戳，否则 Ninja 会反复重新生成。标准命令见 `PROJECT_WORKFLOW.md`。
 - Linux 运行基线：本机用 Go 1.25.10 交叉编译固定提交的 amd64 测试二进制，rsync 至远端后完整测试 `PASS`、退出码 0；覆盖 v2、v3/memfd、队列、Stream/Session 和热重启路径。

@@ -55,6 +55,7 @@ rsync -az --no-times --omit-dir-times build/v2-oracle-linux-amd64 \
   23.2:/home/chm/shmipc-cpp/build/v2-oracle-linux-amd64
 ssh 23.2 'cd /home/chm/shmipc-cpp && \
   SHMIPC_CPP_V2_HANDSHAKE_HELPER=$PWD/build/debug/tests/shmipc_v2_handshake_interop_helper \
+  SHMIPC_CPP_V2_SERVER_SESSION_HELPER=$PWD/build/debug/tests/shmipc_v2_server_session_interop_helper \
   ./build/v2-oracle-linux-amd64 -test.run "^TestV2HandshakeInterop$" -test.v'
 ```
 
@@ -73,7 +74,8 @@ ssh 23.2 'cd /home/chm/shmipc-cpp && \
 - `shmipc.epoll_dispatcher`：Linux 上验证 ET partial frame 保留、writev、EAGAIN 背压、并发写无交错、remote/local/shutdown close、buffer/callback 错误与重入 close；非 Linux 明确验证 unsupported。
 - `shmipc.v2_handshake`：验证 client/server 成功初始化、queue 方向翻转、两角色 buffer 分配回收、错误版本/事件、截断 body、缺失路径、重复文件保护与失败清理。
 - `shmipc.v2_client_session`：Linux 上验证单 Stream 20,000→17,000 字节跨 slice round-trip、receive timeout、Polling 和双向 queue close；非 Linux 明确验证 epoll unsupported。
-- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用真实 C++ helpers 双向传递 slice chain/queue elements，在 Linux 验证两个方向的 v2 握手及 C++ client→真实 Go server 的单 Stream 数据与关闭。
+- `shmipc.v2_server_session`：Linux 上验证动态绑定远端 Stream ID 2、三消息批量 Polling、跨 slice、timeout 与双向 queue close；非 Linux 明确验证 epoll unsupported。
+- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用真实 C++ helpers 双向传递 slice chain/queue elements，在 Linux 验证两个方向的 v2 握手，以及 C++ client/server 两个方向的单 Stream 数据与关闭。
 - 任一 commit mismatch、缺行、重复/错序事件或字节差异均为失败，不允许自动更新 golden 后绕过评审。
 
 当前 golden 的 SHA-256：

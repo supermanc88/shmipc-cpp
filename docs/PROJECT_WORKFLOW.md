@@ -111,6 +111,8 @@ Sanitizer 使用独立构建目录，不能混用编译产物：`build/asan`、`
 
 2026-08-18，提交 `050d7da` 的 run `32154121843` 中七项作业及关键步骤全部成功；Go protocol oracle 14/14，关闭 `S-0303` C++ client→Go server 单 Stream 门禁。
 
+2026-08-18，`S-0304` 候选在远端 GCC 8.5 Debug/ASan 14/14、Go client→C++ server 普通互操作 300/300 与 ASan helper 50/50 通过；等待 push 后云端七项门禁。
+
 ## 5. Go 基线与互操作
 
 Go 与 C++ 双向互操作已确认为项目正确性验证目标，但 Go 不是 C++ 库的运行依赖。

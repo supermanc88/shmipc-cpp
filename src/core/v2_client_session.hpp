@@ -45,7 +45,7 @@ struct V2SessionStatus {
     }
 };
 
-struct V2ClientSessionState;
+struct V2SingleStreamSessionState;
 struct V2ClientSessionResult;
 
 class V2ClientSession final {
@@ -85,11 +85,11 @@ private:
         transport::ControlSocket&&, const V2ClientConfig&,
         transport::EpollDispatcher&);
 
-    V2ClientSession(std::shared_ptr<V2ClientSessionState> state,
+    V2ClientSession(std::shared_ptr<V2SingleStreamSessionState> state,
                     std::shared_ptr<transport::EventConnection> connection)
         noexcept;
 
-    std::shared_ptr<V2ClientSessionState> state_{};
+    std::shared_ptr<V2SingleStreamSessionState> state_{};
     std::shared_ptr<transport::EventConnection> connection_{};
 };
 

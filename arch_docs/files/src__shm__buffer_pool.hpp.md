@@ -41,7 +41,7 @@
 
 - `to_string(BufferPoolError)`：错误分类诊断文本。
 - `initialize_buffer_pool(memory, size, tiers, role)`：排序并校验配置，按上游百分比分配公式初始化 manager、lists 和 slice free chains。
-- `map_buffer_pool(memory, size, role)`：从现有字节映射 pool，并验证 list 顺序、region 边界、free chain、节点状态及 header size 一致性。
+- `map_buffer_pool(memory, size, role)`：从现有字节映射 pool，验证稳定的 manager/list 顺序与 region 边界，以及动态 head/tail 的范围和 stride 对齐；不判定瞬时 size，也不要求并发活动的 free-list 是全空快照。
 
 ## Allocation Flow
 
@@ -65,13 +65,14 @@
 - token 析构不会自动回收，因为后续跨进程传递会转移逻辑所有权；调用方必须显式 `recycle`，并可用 `all_returned()` 做关闭门禁。
 - size/head/tail/角色计数使用 always-lock-free 32 位 seq_cst 原子；slice 普通字段的可见性由“写完后发布 size”和“成功 CAS 后取得独占所有权”建立。
 - `all_returned()` 复现 Go 的检查：free size 恢复 capacity 且本角色净 pop/push counter 为零；单向传输结束时物理 slice 已归还但角色净计数可能非零。
+- v2 无 ACK，mapper 可能在 creator 已分配 slice 后才建立；因此映射期不能深度遍历并要求 free-list 节点数等于瞬时 size，具体节点/chain 在 allocate/adopt/recycle 时验证。
 
 ## Evidence
 
 - 完整接口：`src/shm/buffer_pool.hpp:11-156`。
 - 原子分配、链式发布/adopt 与回收：`src/shm/buffer_pool.cpp:165-525`。
-- 初始化与严格映射验证：`src/shm/buffer_pool.cpp:556-742`。
-- 双进程压力和双向链测试：`tests/buffer_pool_test.cpp:261-410`。
+- 初始化与 live-pool 安全映射验证：`src/shm/buffer_pool.cpp:556-700`。
+- 双进程压力、活动 allocation 映射和双向链测试：`tests/buffer_pool_test.cpp`。
 - Go↔C++ helper：`tests/buffer_pool_interop_helper.cpp:17-75`；oracle：`tools/go_oracle/control_header_oracle_test.gotxt:18-113`。
 - 本机 AppleClang Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 和双向 Go oracle 通过。
 

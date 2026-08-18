@@ -187,6 +187,14 @@
 - 暂缓：fallback payload、queue-full retry、多 Stream、C++ server 和公共 API 放在 `S-0304..0305`/M4。
 - 证据：`src/core/v2_client_session.cpp`、`tests/v2_client_session_test.cpp`、`TestV2ClientSessionInterop`；远端 Debug/ASan、ASan Go 互操作及 50/50 重复通过。
 
+### D-023：v2 server 动态绑定首个 Stream，mapper 不快照验证活动 free-list
+
+- 状态：本机/远端已验证，等待云端门禁
+- Stream：Go client 的 `nextStreamID` 初值为 1，首次 `OpenStream()` 原子递增后得到 ID 2；C++ server 在首个 opened queue element 到达时绑定非零 ID，后续单 Stream 切片拒绝不同 ID。多 ID 并发仍属于 `S-0305`。
+- 消息与关闭：每个 queue element 保留消息边界；一次 Polling 排空连续消息。真实互操作分别验证 C++ 主动 close 与 Go 主动 close，避免半关闭时序让一侧 close 被合并。
+- live mapping：v2 文件握手没有 ACK。Go 写完 metadata 后可立即分配 slice；mapper 建立时只校验稳定 manager/list 布局及动态 head/tail 的边界和 stride 对齐，不判定可瞬时为 0 的 size，也不遍历要求全空的 free-list 快照。allocate/adopt/recycle 继续严格验证所操作 slice/chain。
+- 证据：`src/core/v2_server_session.hpp`、`src/core/v2_client_session.cpp`、`src/shm/buffer_pool.cpp`、`tests/v2_server_session_test.cpp` 与 `TestV2ServerSessionInterop`；远端 Debug/ASan 14/14、普通互操作 300/300、ASan helper 50/50。
+
 ## 设计风险与待验证事实
 
 ### R-001：共享内存使用本机字节序和手工 offset
@@ -262,3 +270,4 @@
 - 2026-08-18：`S-0302` 新增 v2 文件路径握手、move-only 共享资源聚合及细分错误模型；固定 Go overlay 在远端 Linux 完成两个方向真实 Session 初始化并连续 50/50，GCC 8.5 Debug/ASan 通过，等待 GitHub Actions 门禁。影响文档：索引、概要、本文件、core/oracle 目录、关系图、移植计划、工作流、回归指南和功能矩阵。
 - 2026-08-18：提交 `3f2db07` 的 GitHub Actions run `32151993614` 七项作业及关键步骤全部成功，包含 GCC/Clang Debug/Release、ASan+UBSan、TSan 与 Linux Go↔C++ v2 handshake oracle；`S-0302` 正式关闭。影响文档：索引、概要、本文件、root/core 目录、项目工作流、移植计划和功能矩阵。
 - 2026-08-18：`S-0303` 新增 v2 client 单 Session/Stream，将握手资源接入 epoll，以 buffer chain、queue 和 Polling 完成消息收发及关闭；真实 Go server 互操作和远端 Debug/ASan/50 轮压力通过。提交 `050d7da` 的 GitHub Actions run `32154121843` 七项作业及关键步骤全部成功，Go protocol oracle 为 14/14，`S-0303` 正式关闭。影响文档：索引、概要、本文件、root/core/oracle 目录、关系图、项目工作流、移植计划、回归指南和功能矩阵。
+- 2026-08-18：`S-0304` 新增 v2 server 单 Stream，按真实 Go client 首个 ID 2 动态绑定，完成多消息、跨 slice 与两个方向的关闭互操作。300 轮压力发现并修正无 ACK 握手下 mapper 对活动 free-list 的错误快照假设；本机三套 Sanitizer、远端 Debug/ASan、普通 300/300 与 ASan 50/50 通过，等待云端门禁。影响文档：索引、概要、本文件、root/core/shm/oracle 目录、buffer pool/server session 文件、关系图、移植计划、回归指南和功能矩阵。

@@ -24,13 +24,14 @@ graph TD
   dispatcher["src/transport/epoll_dispatcher"]
   handshake["src/core/v2_handshake"]
   client_session["src/core/v2_client_session"]
+  server_session["src/core/v2_server_session"]
   transport_test["tests/control_socket_test.cpp"]
   dispatcher_test["tests/epoll_dispatcher_test.cpp"]
   atomic["src/shm/atomic_word"]
   interop["C++/Go buffer-chain oracle"]
   queue_interop["C++/Go queue oracle"]
   handshake_interop["C++/Go v2 handshake oracle"]
-  session_interop["C++ client / Go server Stream oracle"]
+  session_interop["C++ / Go 双角色 Stream oracle"]
   golden_test["C++ codec tests"]
 
   consumer -- includes --> public
@@ -69,6 +70,11 @@ graph TD
   client_session -- publishes/adopts --> buffer_io
   client_session -- puts/pops --> shared_queue
   client_session -- writes polling --> transport
+  server_session -- starts with --> handshake
+  server_session -- shares callback state --> client_session
+  server_session -- registers callback --> dispatcher
+  server_session -- publishes/adopts --> buffer_io
+  server_session -- puts/pops --> shared_queue
   transport_test -- calls --> transport
   dispatcher_test -- calls --> dispatcher
   mapping -- owns --> os_mapping["mmap / file FD / memfd"]
@@ -85,6 +91,7 @@ graph TD
   handshake_interop -- calls --> handshake
   handshake_interop -- starts real Session --> upstream
   session_interop -- calls --> client_session
+  session_interop -- calls --> server_session
   session_interop -- accepts/reads/writes/closes --> upstream
   ci -- runs --> runner
 ```

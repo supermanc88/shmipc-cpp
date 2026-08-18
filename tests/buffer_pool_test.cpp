@@ -146,6 +146,40 @@ bool test_selection_exhaustion_and_recycle() {
            pool.value.available_bytes() == initial_bytes;
 }
 
+bool test_map_live_pool() {
+    std::vector<std::uint8_t> memory(region_size, 0);
+    auto creator = shmipc::shm::initialize_buffer_pool(
+        memory.data(), memory.size(), {{4096U, 60U}, {8192U, 40U}},
+        BufferListRole::creator);
+    auto allocation = creator ? creator.value.allocate(4096U)
+                              : shmipc::shm::BufferAllocationResult{};
+    auto active_header = shmipc::shm::read_buffer_list_header(
+        memory.data() + shmipc::shm::buffer_manager_header_size,
+        memory.size() - shmipc::shm::buffer_manager_header_size);
+    if (!allocation || !active_header) {
+        return false;
+    }
+    auto transient_header = active_header.value;
+    transient_header.size = 0;
+    if (shmipc::shm::write_buffer_list_header(
+            memory.data() + shmipc::shm::buffer_manager_header_size,
+            memory.size() - shmipc::shm::buffer_manager_header_size,
+            transient_header) != shmipc::shm::BufferLayoutError::none) {
+        return false;
+    }
+    auto mapper = shmipc::shm::map_buffer_pool(
+        memory.data(), memory.size(), BufferListRole::mapper);
+    if (shmipc::shm::write_buffer_list_header(
+            memory.data() + shmipc::shm::buffer_manager_header_size,
+            memory.size() - shmipc::shm::buffer_manager_header_size,
+            active_header.value) != shmipc::shm::BufferLayoutError::none) {
+        return false;
+    }
+    return creator && mapper &&
+           creator.value.recycle(std::move(allocation.value)) ==
+               BufferPoolError::none;
+}
+
 bool test_wrong_pool_and_corrupt_manager() {
     std::vector<std::uint8_t> first_memory(region_size, 0);
     std::vector<std::uint8_t> second_memory(region_size, 0);
@@ -184,25 +218,6 @@ bool test_wrong_pool_and_corrupt_manager() {
             first_memory.size() - shmipc::shm::buffer_manager_header_size,
             allocated_list.value) != shmipc::shm::BufferLayoutError::none ||
         first.value.recycle(std::move(allocation.value)) != BufferPoolError::none) {
-        return false;
-    }
-
-    auto bad_size_memory = first_memory;
-    auto full_list = shmipc::shm::read_buffer_list_header(
-        bad_size_memory.data() + shmipc::shm::buffer_manager_header_size,
-        bad_size_memory.size() - shmipc::shm::buffer_manager_header_size);
-    if (!full_list) {
-        return false;
-    }
-    --full_list.value.size;
-    if (shmipc::shm::write_buffer_list_header(
-            bad_size_memory.data() + shmipc::shm::buffer_manager_header_size,
-            bad_size_memory.size() - shmipc::shm::buffer_manager_header_size,
-            full_list.value) != shmipc::shm::BufferLayoutError::none ||
-        shmipc::shm::map_buffer_pool(bad_size_memory.data(),
-                                     bad_size_memory.size(),
-                                     BufferListRole::mapper)
-                .error != BufferPoolError::invalid_layout) {
         return false;
     }
 
@@ -425,6 +440,10 @@ int main() {
     }
     if (!test_selection_exhaustion_and_recycle()) {
         std::cerr << "buffer pool allocation/recycle test failed\n";
+        return 1;
+    }
+    if (!test_map_live_pool()) {
+        std::cerr << "live buffer pool mapping test failed\n";
         return 1;
     }
     if (!test_wrong_pool_and_corrupt_manager()) {

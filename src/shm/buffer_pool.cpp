@@ -684,8 +684,7 @@ BufferPoolCreateResult map_buffer_pool(std::uint8_t* memory, std::size_t size,
             return {{}, BufferPoolError::misaligned_atomic};
         }
         if (header.value.capacity > static_cast<std::uint32_t>(
-                                        std::numeric_limits<std::int32_t>::max()) ||
-            header.value.size < 1) {
+                                        std::numeric_limits<std::int32_t>::max())) {
             return {{}, BufferPoolError::invalid_layout};
         }
         const auto list_size = buffer_list_region_size(
@@ -694,39 +693,17 @@ BufferPoolCreateResult map_buffer_pool(std::uint8_t* memory, std::size_t size,
             return {{}, list_size ? BufferPoolError::truncated_region
                                   : translate_layout_error(list_size.error)};
         }
-        const auto chain_error = validate_buffer_list_chain(memory + offset,
-                                                            list_size.value);
-        if (chain_error != BufferLayoutError::none) {
-            return {{}, translate_layout_error(chain_error)};
-        }
         const auto stride = buffer_slice_header_size +
                             static_cast<std::size_t>(
                                 header.value.capacity_per_buffer);
-        auto current = header.value.head;
-        std::uint32_t free_count = 0;
-        for (;;) {
-            const auto slice_offset = buffer_list_header_size +
-                                      static_cast<std::size_t>(current);
-            const auto slice = read_buffer_slice_header(
-                memory + offset + slice_offset, list_size.value - slice_offset);
-            if (!slice) {
-                return {{}, translate_layout_error(slice.error)};
-            }
-            if ((slice.value.flags & in_use_flag) != 0U ||
-                slice.value.size != 0U || slice.value.data_start != 0U) {
-                return {{}, BufferPoolError::invalid_layout};
-            }
-            ++free_count;
-            if ((slice.value.flags & has_next_flag) == 0U) {
-                break;
-            }
-            current = slice.value.next_offset;
-            if (free_count >= header.value.capacity ||
-                static_cast<std::size_t>(current) % stride != 0U) {
-                return {{}, BufferPoolError::invalid_layout};
-            }
-        }
-        if (free_count != static_cast<std::uint32_t>(header.value.size)) {
+        const auto buffer_bytes = list_size.value - buffer_list_header_size;
+        const auto valid_dynamic_offset = [buffer_bytes, stride](
+                                              std::uint32_t value) {
+            return static_cast<std::size_t>(value) < buffer_bytes &&
+                   static_cast<std::size_t>(value) % stride == 0U;
+        };
+        if (!valid_dynamic_offset(header.value.head) ||
+            !valid_dynamic_offset(header.value.tail)) {
             return {{}, BufferPoolError::invalid_layout};
         }
         lists.push_back({offset, list_size.value, header.value.capacity,

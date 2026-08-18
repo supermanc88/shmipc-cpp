@@ -22,6 +22,7 @@
 - [files/src__transport__epoll_dispatcher.hpp.md](files/src__transport__epoll_dispatcher.hpp.md)：Linux epoll、读缓冲、写背压与关闭生命周期
 - [files/src__core__v2_handshake.hpp.md](files/src__core__v2_handshake.hpp.md)：v2 握手状态、资源 ownership 与错误模型
 - [files/src__core__v2_client_session.hpp.md](files/src__core__v2_client_session.hpp.md)：v2 client 单 Session/Stream 数据路径
+- [files/src__core__v2_server_session.hpp.md](files/src__core__v2_server_session.hpp.md)：v2 server 动态绑定单 Stream 数据路径
 - [dirs/third_party__shmipc-go.md](dirs/third_party__shmipc-go.md)：Go 参考实现文件映射
 - [files/third_party__shmipc-go__const.go.md](files/third_party__shmipc-go__const.go.md)：协议与布局常量
 - [files/third_party__shmipc-go__protocol_event.go.md](files/third_party__shmipc-go__protocol_event.go.md)：控制协议事件格式
@@ -83,6 +84,7 @@
 | `src/core/v2_handshake.cpp` | ✅ | #handshake #metadata #mapping | client 创建/发送与 server 接收/映射状态机 |
 | `src/core/v2_client_session.hpp` | ✅ | #session #stream #errors | 单 client Session/Stream API 与错误模型 |
 | `src/core/v2_client_session.cpp` | ✅ | #epoll #queue #buffer | Polling、消息收发、timeout 与 close 状态机 |
+| `src/core/v2_server_session.hpp` | ✅ | #server #session #stream | 首个远端 Stream 动态绑定与服务端 API |
 | `tests/version_test.cpp` | ✅ | #test | 无第三方依赖的首个 library test |
 | `tests/control_header_golden_test.cpp` | ✅ | #test #protocol #golden | C++ 侧消费 control-header fixture |
 | `tests/protocol_codec_test.cpp` | ✅ | #test #protocol #negative | metadata/fallback round-trip 与异常输入测试 |
@@ -140,7 +142,7 @@
 | C++ MPSC queue 与 Go 互操作 | `src/shm/shared_queue.*`, `tests/shared_queue*_helper.cpp`, `tools/go_oracle/` | `QUEUE-001..003` |
 | Unix/TCP 控制连接与 Linux 事件层 | `src/transport/control_socket.*`, `src/transport/epoll_dispatcher.*`, `tests/*transport*`, `tests/epoll_dispatcher_test.cpp` | `COMP-001`, `S-0301` |
 | Stream 多路复用 | `session.go`, `stream.go` | `STREAM-001..004` |
-| C++ v2 单 client Stream | `src/core/v2_client_session.*`, `tests/v2_client_session*` | `COMP-001`, `STREAM-001..002` |
+| C++ v2 单 Stream 双角色 | `src/core/v2_{client,server}_session.*`, `tests/v2_*_session*` | `COMP-001`, `STREAM-001..002` |
 | 控制通道 fallback | `stream.go`, `protocol_manager.go` | `STREAM-003` |
 | 服务监听和热重启 | `listener.go`, `session_manager.go` | `API-002`, `OPS-001` |
 | 性能与稳定性指标 | `stats.go`, `bench_test.go` | `NFR-003`, `OBS-001` |
@@ -148,8 +150,9 @@
 ## 分析进度
 
 - 已完成：上游架构分析、M0、M1、M2，以及 M3 `S-0301..0303`；提交 `050d7da` 的 run `32154121843` 七项门禁全部成功，Go protocol oracle 为 14/14。
+- 进行中：`S-0304` Go client→C++ server 已完成本机/远端、Sanitizer、双向 close 与 300 轮互操作验证，等待云端门禁。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
-- 待验证：Go client→C++ server、多 Stream、fallback 与完整关闭矩阵。C++ client→Go server 单 Stream 已完成本机、远端和云端验证。
+- 待验证：多 Stream、fallback 与完整关闭矩阵。两个方向的单 Stream 已完成远端互操作，服务端方向尚待云端门禁。
 
 ## 状态标记
 
