@@ -32,7 +32,7 @@
 - `tests/v2_handshake_test.cpp` 覆盖成功、双向 queue、两角色 buffer、错误版本/事件、截断、缺失路径、已有文件保护及失败清理。
 - 固定 Go overlay 在远端 Linux 验证两个方向，并连续重复 50 轮；GCC 8.5 Debug/ASan 与提交 `3f2db07` 的 run `32151993614` 七项门禁通过。
 - `tests/v2_client_session_test.cpp` 与 Go oracle 验证 C++ client→Go server 的 20,000/17,000 字节双向链、Polling、timeout 和 close；远端 Debug/ASan、50/50 重复及提交 `050d7da` 的 run `32154121843` 七项门禁通过。
-- `tests/v2_server_session_test.cpp` 与 Go oracle 验证 Go client→C++ server 的三消息双向链、ID 2 动态绑定、批量 Polling 和两个方向 close；远端 Debug/ASan 14/14、普通 300/300 与 ASan 50/50 通过。
+- `tests/v2_server_session_test.cpp` 与 Go oracle 验证 Go client→C++ server 的三消息双向链、ID 2 动态绑定、批量 Polling 和两个方向 close；远端 Debug/ASan 14/14、普通 300/300、ASan 50/50 及提交 `0347f34` 的 run `32158446306` 七项门禁通过。
 
 ## Links
 

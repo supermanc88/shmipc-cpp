@@ -26,6 +26,7 @@
 - `TestV2HandshakeInterop` 在 Linux 启动真实 Go `newSession` 与 C++ helper，分别验证 Go client→C++ server 和 C++ client→Go server；helper 以 mapping signal 保持 creator 生命周期，避免测试端过早断开。
 - `TestV2ClientSessionInterop` 在 Linux 以真实 Go server `AcceptStream/Read/Write/Close` 验证 C++ client 的 20,000→17,000 字节共享内存双向数据和关闭路径。
 - `TestV2ServerSessionInterop` 在 Linux 以真实 Go client 首个 Stream ID 2 验证 C++ server 的三消息双向数据；独立子场景分别验证 C++ 与 Go 主动关闭。
+- 提交 `0347f34` 的 GitHub Actions run `32158446306` 在 Linux 完整执行 Go protocol oracle，CTest 为 15/15。
 - runner 支持 `SHMIPC_GO_ORACLE_COMPILE_LINUX_AMD64=<output>`，用于在本机生成包含 overlay 的静态 Linux/amd64 test binary，再同步到无 Go 工具链的远端执行。
 - 提交 `34ef510` 的 GitHub Actions run `32119710781` 在 Go 1.25.10 下完成 setup、configure、build 和 test，作业结论 success。
 - 提交 `c1c23f9` 的 run `32134325132` 中 Go protocol oracle 使用生产 BufferWriter/Reader 完成双向 20,000 字节链路，作业及其余六项矩阵全部成功。

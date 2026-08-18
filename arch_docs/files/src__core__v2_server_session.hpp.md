@@ -17,7 +17,7 @@
 - 实现：`src/core/v2_client_session.cpp` 中共享 callback state 与 server 方法。
 - C++ peer：`tests/v2_server_session_test.cpp`，三条请求/响应、ID 2、timeout、跨 slice 和双向 close。
 - Go peer：`TestV2ServerSessionInterop`，分别验证 C++ 主动 close 与 Go 主动 close。
-- 远端 GCC 8.5 Debug/ASan 14/14，普通互操作 300/300，ASan helper 50/50；云端门禁待 push。
+- 远端 GCC 8.5 Debug/ASan 14/14，普通互操作 300/300，ASan helper 50/50；提交 `0347f34` 的 run `32158446306` 七项门禁与 Go oracle 15/15 通过。
 
 ## Links
 

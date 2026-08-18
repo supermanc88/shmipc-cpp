@@ -47,7 +47,7 @@
 - 提交 `17a668e` 的 GitHub Actions run `32148166394` 中 GCC/Clang Debug/Release、ASan+UBSan、TSan 与 Go protocol oracle 七项全部成功，`S-0301` 关闭。
 - `src/core/v2_handshake.*` 组合 codec、blocking transport、mapping、pool 与 queue，实现无 ACK 的 v2 文件路径握手；远端 Go↔C++ 两方向 50/50 与 run `32151993614` 七项云端门禁通过。
 - `src/core/v2_client_session.*` 将 v2 client 资源移交 epoll，以固定 Stream ID 1 完成 buffer/queue 消息收发、Polling、timeout 与 close；真实 Go server、远端 Debug/ASan/50 轮及提交 `050d7da` 的 run `32154121843` 七项门禁通过。
-- `src/core/v2_server_session.hpp` 与共享 Session 状态实现 Go client→C++ server 的首个 Stream ID 动态绑定、多消息和关闭；远端 Debug/ASan、普通互操作 300/300 与 ASan 50/50 通过，等待云端门禁。
+- `src/core/v2_server_session.hpp` 与共享 Session 状态实现 Go client→C++ server 的首个 Stream ID 动态绑定、多消息和关闭；远端 Debug/ASan、普通互操作 300/300、ASan 50/50 及提交 `0347f34` 的 run `32158446306` 七项门禁通过。
 - `map_buffer_pool` 允许无 ACK 握手期间 creator 已有活动 allocation，映射期校验稳定布局和动态 offset 边界，slice/chain 由运行期操作严格校验。
 
 ## Guesses & Uncertainties
