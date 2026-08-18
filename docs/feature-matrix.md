@@ -3,7 +3,6 @@
 ## 状态定义
 
 - `已验证`：实现和规定证据均已通过。
-- `本机/远端已验证，待云端`：实现与开发环境门禁通过，尚待 push 后的独立 CI 矩阵。
 - `基线锁定`：上游事实、fixture 或验收方法已固定，但 C++ 功能尚未实现。
 - `未开始`：尚无可验收实现。
 
@@ -23,7 +22,7 @@
 | 单进程分级 buffer pool | 已验证 | 档位回退、角色 counter/token、损坏 header、run `32129419428` | 持续回归 |
 | 跨进程原子 buffer pool 与链式互操作 | 已验证 | 双进程压力、TSan、C++↔Go 双向 20,000 字节链、run `32129419428` | 持续回归 |
 | MPSC queue 与 working flag | 已验证 | 线程/进程压力、唤醒竞争、双向 Go↔C++ 1,000 elements、run `32131088262` | 持续回归 |
-| BufferWriter/Reader 与 pin/release | 本机/远端已验证，待云端 | 单片 borrowed、跨片 owned copy、RAII、Go oracle、GCC 8.5 Debug/ASan | 本批 push 后关闭云端门禁 |
+| BufferWriter/Reader 与 pin/release | 已验证 | 单片 borrowed、跨片 owned copy、RAII、Go oracle、run `32134325132` | 持续回归 |
 
 ## 产品需求
 
@@ -35,7 +34,7 @@
 | `PROTO-002` | v2/v3 初始化状态机 | 未开始 | `S-0401` |
 | `SHM-001` | Queue/buffer manager/slice 共享布局与映射 | byte layout 与 mapping 已云端验证 | `S-0102..0103`/`S-0201` |
 | `SHM-002` | 分级 buffer 分配回收 | 单进程与双进程原子路径已云端验证 | `S-0202..0203` |
-| `SHM-003` | 链式 slice 与零拷贝生命周期 | publish/adopt/recycle 已云端验证；Reader/Writer pin/release 已本机/远端验证，待云端 | `S-0203`/`S-0205` |
+| `SHM-003` | 链式 slice 与零拷贝生命周期 | publish/adopt/recycle 与 Reader/Writer pin/release 已由 run `32134325132` 验证 | `S-0203`/`S-0205` |
 | `SHM-004` | 损坏 offset/length 防护 | 9 类固定 corpus 与 run `32125329954` 已验证 | `S-0104` |
 | `QUEUE-001` | MPSC queue put/pop | 已云端验证 | `S-0102`/`S-0204` |
 | `QUEUE-002` | working flag 与批量唤醒 | 已云端验证 | `S-0204` |

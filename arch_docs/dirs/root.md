@@ -41,6 +41,7 @@
 - `src/shm/atomic_word.hpp` 与 `buffer_pool.cpp:36-525` 实现 lock-free seq_cst 分配回收和 chain publish/adopt；父子进程压力、Sanitizer 及双向 Go oracle 通过。
 - `src/shm/shared_queue.cpp:74-173` 实现 MPSC put/pop、batch 与 working flag；本机/远端压力、Sanitizer 及双向 Go oracle 通过。
 - `src/shm/buffer_io.cpp:42-491` 实现 Writer/Reader、单片零拷贝、跨片复制和 pin/release；本机 oracle/ASan+UBSan/TSan 与远端 GCC 8.5 Debug/ASan 通过。
+- 提交 `c1c23f9` 的 GitHub Actions run `32134325132` 中 GCC/Clang Debug/Release、ASan+UBSan、TSan 和 Go protocol oracle 七项全部成功，M2 完成。
 
 ## Guesses & Uncertainties
 

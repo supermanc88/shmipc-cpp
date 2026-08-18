@@ -85,7 +85,7 @@
 
 ## Guesses & Uncertainties
 
-- `S-0205` 的本机和远端证据已通过；完整 Linux 编译器/Sanitizer 云端门禁等待本批 push。
+- `S-0205` 已由提交 `c1c23f9` 的 run `32134325132` 完整验证；M2 共享内存数据平面门禁关闭。
 - buffer list counter 偏移已确定，语义已修正为 creator/mapper 各自的本地净 pop/push 值。
 
 ## Links

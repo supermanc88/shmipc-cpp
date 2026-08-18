@@ -24,6 +24,7 @@
 - `tests/buffer_pool_interop_helper.cpp:18-85` 是 oracle 的 C++ 创建/验证端；创建方向使用 BufferWriter，验证方向用 BufferReader 的跨片 owned-copy 路径，临时共享文件由 Go test 的 `t.TempDir()` 隔离清理。
 - `control_header_oracle_test.gotxt:116-163` 与 `tests/shared_queue_interop_helper.cpp:14-64` 双向传递各 1,000 个 queue elements，并验证方向翻转和 working flag。
 - 提交 `34ef510` 的 GitHub Actions run `32119710781` 在 Go 1.25.10 下完成 setup、configure、build 和 test，作业结论 success。
+- 提交 `c1c23f9` 的 run `32134325132` 中 Go protocol oracle 使用生产 BufferWriter/Reader 完成双向 20,000 字节链路，作业及其余六项矩阵全部成功。
 
 ## Guesses & Uncertainties
 

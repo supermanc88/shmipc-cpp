@@ -6,7 +6,7 @@
 |---|---|
 | 项目类型 | Go 到 C++ 的跨语言、跨运行时重实现 |
 | 参考实现 | `third_party/shmipc-go` commit `55c241eea321071278d1ee7f7c46292d23e50a5b` |
-| 当前阶段 | M1 已完成；M2 `S-0201..0204` 已云端验收，`S-0205` 已完成本机/远端验证并等待本批云端门禁 |
+| 当前阶段 | M2 已完成；提交 `c1c23f9` 的 run `32134325132` 完整验收 `S-0205`，准备进入 M3 `S-0301` |
 | 已确认目标 | 在 Linux 上提供现代 C++ 共享内存 IPC 库，并与固定 Go 实现双向互通；Go 仅用于开发验收 |
 | 流程依据 | 用户提供的《软件项目端到端标准工作流程》 |
 | 架构依据 | [上游架构概要](../arch_docs/01_OVERVIEW.md) 与 [决策/风险](../arch_docs/02_DECISIONS.md) |
@@ -173,7 +173,9 @@ tools/
 - `S-0202`（已验证）：分级 buffer list 单进程分配回收；保留 sentinel、耗尽向大档位回退、角色 token/counter 和损坏 header 防护。
 - `S-0203`（已验证）：lock-free seq_cst 双进程分配回收，以及 C++→Go、Go→C++ 链式 slice publish/adopt；run `32129419428` 七项作业全部成功。
 - `S-0204`（已验证）：MPSC queue、working flag 和批量消费；保留 amd64 非自然对齐与 arm64 自然对齐布局；run `32131088262` 七项作业全部成功。
-- `S-0205`（本机/远端已验证，待云端）：BufferWriter/Reader、pin/release、跨 slice owned-copy 慢路径及 RAII 回收。
+- `S-0205`（已验证）：BufferWriter/Reader、pin/release、跨 slice owned-copy 慢路径及 RAII 回收；run `32134325132` 七项作业全部成功。
+
+状态：**已完成**。提交 `c1c23f9` 的 GitHub Actions run `32134325132` 通过 GCC/Clang Debug/Release、ASan+UBSan、TSan 与 Go oracle 七项门禁。
 
 退出条件：`SHM-*`、`QUEUE-*` 的自动测试通过；压力测试计数守恒；ASan/UBSan/TSan 规定集合通过。
 
@@ -305,12 +307,12 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-M2-004`：提交 `281d024` 的 GitHub Actions run [`32129419428`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32129419428) 中 GCC/Clang Debug/Release、ASan+UBSan、TSan 与 Go 双向 oracle 七项作业全部成功。
 - `E-M2-005`：MPSC queue 以 4 producer/单 consumer 传递 20,000 elements，父子进程在 256 slots 上环绕 20,000 次，working 清零竞争重复 1,000 次；Go↔C++ 两方向各传 1,000 elements 并验证 working flag。本机 arm64 与 Rosetta x86_64 ASan+UBSan、本机 TSan、远端 GCC 8.5 Debug/ASan 与额外 20 轮压力通过。
 - `E-M2-006`：提交 `4a0ef5c` 的 GitHub Actions run [`32131088262`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32131088262) 中 GCC/Clang Debug/Release、ASan+UBSan、TSan 与 Go queue oracle 七项作业全部成功。
-- `E-M2-007`：BufferWriter/Reader 覆盖 reserve/write/publish、单 slice borrowed view、跨 slice owned copy、peek/byte/string/discard、pin/release、析构回收与异常边界；20,000 字节 Go↔C++ helper 已改走生产 Buffer IO，并由 oracle 纠正为持续使用最大 tier 的上游分配语义。本机 Go oracle 10/10、ASan+UBSan 9/9、TSan 9/9，远端 GCC 8.5 Debug/ASan 各 9/9 通过；云端证据待本批 push。
+- `E-M2-007`：BufferWriter/Reader 覆盖 reserve/write/publish、单 slice borrowed view、跨 slice owned copy、peek/byte/string/discard、pin/release、析构回收与异常边界；20,000 字节 Go↔C++ helper 已改走生产 Buffer IO，并由 oracle 纠正为持续使用最大 tier 的上游分配语义。本机 Go oracle 10/10、ASan+UBSan 9/9、TSan 9/9，远端 GCC 8.5 Debug/ASan 各 9/9 通过；提交 `c1c23f9` 的 run [`32134325132`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32134325132) 七项作业全部成功。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. 提交 `S-0205` 并由用户 push，获取完整 GitHub Actions 编译器/Sanitizer/Go oracle 证据。
-2. 云端七项作业通过后关闭 M2 退出门禁。
-3. 进入 `S-0301`，设计并实现 Unix/TCP 控制 transport 与 Linux epoll dispatcher。
+1. 进入 `S-0301`，分析 Go 控制连接与 epoll 路径，设计 Unix/TCP control transport 边界。
+2. 实现阻塞/非阻塞读写、FD 生命周期、超时和错误映射的自动测试。
+3. 在远端 Linux 与 Sanitizer 验证后提交，再进入 v2 `/dev/shm` 握手。

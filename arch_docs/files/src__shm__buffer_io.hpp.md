@@ -59,7 +59,7 @@
 - chain header/总长度复核：`src/shm/buffer_io.cpp:452-491`。
 - 生命周期和错误测试：`tests/buffer_io_test.cpp:34-228`。
 - Go↔C++ 20,000 字节 helper 已改为真实 Writer/Reader：`tests/buffer_pool_interop_helper.cpp:18-85`。
-- 本机 AppleClang Debug/ASan+UBSan/TSan、固定 Go oracle，以及远端 GCC 8.5 Debug/ASan 均通过；云端门禁等待本批 push。
+- 本机 AppleClang Debug/ASan+UBSan/TSan、固定 Go oracle，以及远端 GCC 8.5 Debug/ASan 均通过；提交 `c1c23f9` 的 GitHub Actions run `32134325132` 七项作业全部成功。
 
 ## Links
 

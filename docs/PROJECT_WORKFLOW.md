@@ -105,6 +105,8 @@ Sanitizer 使用独立构建目录，不能混用编译产物：`build/asan`、`
 
 2026-08-18，提交 `34ef510` 的 run `32119710781` 新增 Go 1.25.10 control-header oracle 后，完整七项矩阵全部通过，建立了 `S-0003` 与 M0 完成基线。
 
+2026-08-18，提交 `c1c23f9` 的 run `32134325132` 中 GCC/Clang Debug/Release、ASan+UBSan、TSan 与生产 BufferWriter/Reader Go oracle 七项全部成功，关闭 M2 共享内存数据平面门禁。
+
 ## 5. Go 基线与互操作
 
 Go 与 C++ 双向互操作已确认为项目正确性验证目标，但 Go 不是 C++ 库的运行依赖。
