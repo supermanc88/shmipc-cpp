@@ -6,7 +6,7 @@
 |---|---|
 | 项目类型 | Go 到 C++ 的跨语言、跨运行时重实现 |
 | 参考实现 | `third_party/shmipc-go` commit `55c241eea321071278d1ee7f7c46292d23e50a5b` |
-| 当前阶段 | M2、M3 已完成；M4 `S-0401` 已完成本机/远端验证，进入 `S-0402` SCM_RIGHTS |
+| 当前阶段 | M2、M3 已完成；M4 `S-0401` 已关闭，`S-0402` 已完成本机/远端验证，下一步 `S-0403` fallback |
 | 已确认目标 | 在 Linux 上提供现代 C++ 共享内存 IPC 库，并与固定 Go 实现双向互通；Go 仅用于开发验收 |
 | 流程依据 | 用户提供的《软件项目端到端标准工作流程》 |
 | 架构依据 | [上游架构概要](../arch_docs/01_OVERVIEW.md) 与 [决策/风险](../arch_docs/02_DECISIONS.md) |
@@ -196,8 +196,8 @@ tools/
 
 切片：
 
-- `S-0401`（已完成本机/远端验证，待云端门禁）：独立版本协商状态机；client 支持 v2 降级，server 严格要求 v3 Exchange 首帧，固定 Go 双向 oracle 通过。
-- `S-0402`：SCM_RIGHTS 发送/接收两个 FD 和异常路径。
+- `S-0401`（已验证）：独立版本协商状态机；client 支持 v2 降级，server 严格要求 v3 Exchange 首帧；提交 `807b4fa` 的 run `32207020590` 七项门禁通过。
+- `S-0402`（已完成本机/远端验证，待云端门禁）：SCM_RIGHTS 两个 FD、ACK 时序、完整 memfd mapping、ownership 与异常回滚；固定 Go `newSession` 双向通过。
 - `S-0403`：共享内存耗尽、queue full、fallback 与 sticky ordering。
 - `S-0404`：熔断/恢复期间拒绝新 Stream 的兼容行为。
 
@@ -317,10 +317,11 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-M3-006`：v2 多路实现分离 Session 路由/共享资源与 per-Stream 消息/关闭状态；client 按固定 Go 源码分配 ID 2/3/4，server 在首个 opened 数据到达时 Accept。C++ 三 Stream 并发首包、双向跨 slice 消息与两个主动关闭方向通过；本地 Debug/ASan+UBSan/TSan 15/15、专项 100 次，远端 GCC 8.5 Debug/ASan 15/15、专项 100 次，真实 Go 双向互操作普通 100 轮、ASan 20 轮通过；提交 `78913e6` 的 run [`32204938990`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32204938990) 七项门禁成功。
 - `E-M3-007`：多路 Stream 使用 persistent absolute read/write deadline；read deadline 可唤醒阻塞 receive，write deadline 只约束 queue-full 的 10×10ms retry。满队列 close 改发控制 `StreamClose`，并发 send/close 由 per-Stream send mutex 保序；句柄释放或 Session failure 回收 route entry，Session close 同时唤醒 Stream 与 Accept。普通专项本地/远端各 100 轮，本地 ASan+UBSan/TSan 与远端 ASan 通过；提交 `78913e6` 的 run [`32204938990`](https://github.com/supermanc88/shmipc-cpp/actions/runs/32204938990) 七项门禁成功，Go protocol oracle CTest 16/16，M3 正式关闭。
 - `E-M4-001`：v3 版本协商使用 header-only `ExchangeProtoVersion`；C++ client 对 peer 2/3/>3 分别选择 2/3/3，C++ server 只接受固定 Go 可分派到 v3 initializer 的 version 3 首帧。错误 length/type/magic、低版本、EOF 均有自动测试；本机 Debug/ASan+UBSan/TSan 16/16、固定 Go oracle 17/17，远端 GCC 8.5 Debug/ASan 16/16、双向互操作连续 20 轮通过。
+- `E-M4-002`：v3 client 创建 buffer/queue 两个 memfd，按 metadata→`AckReadyRecvFD`→单次 SCM_RIGHTS `[buffer, queue]`→`AckShareMemory` 完成资源交换；单 NUL payload 与固定 Go stream socket 行为一致。C++ 覆盖错误 ACK、1/3 个 FD、截断 metadata、RAII 回滚及 `/proc/self/fd` 无增长；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 17/17，固定 Go `newSession` 两方向普通 100 轮、ASan helper 20 轮通过。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. 进入 `S-0402`，实现 Unix Domain Socket 上两个 memfd 的 `SCM_RIGHTS` 发送/接收、ACK 顺序、FD 数量/ownership 与异常回滚；版本协商作为前置状态。
+1. 进入 `S-0403`，将 v3 共享资源接入 Session 数据面，并实现共享内存耗尽/queue full 时的 fallback 与 sticky ordering。
 2. 保留 live-pool mapping、两个方向单 Stream 与 300 轮压力作为持续回归。

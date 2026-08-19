@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace shmipc::transport {
 
@@ -35,6 +36,31 @@ struct IoProgress {
 
 using IoResult = TransportResult<IoProgress>;
 
+class ReceivedFileDescriptors final {
+public:
+    ReceivedFileDescriptors() noexcept = default;
+    ~ReceivedFileDescriptors() noexcept;
+
+    ReceivedFileDescriptors(const ReceivedFileDescriptors&) = delete;
+    ReceivedFileDescriptors& operator=(const ReceivedFileDescriptors&) = delete;
+    ReceivedFileDescriptors(ReceivedFileDescriptors&& other) noexcept;
+    ReceivedFileDescriptors&
+    operator=(ReceivedFileDescriptors&& other) noexcept;
+
+    [[nodiscard]] std::size_t size() const noexcept;
+    [[nodiscard]] int at(std::size_t index) const noexcept;
+    [[nodiscard]] int release(std::size_t index) noexcept;
+
+private:
+    friend class ControlSocket;
+    explicit ReceivedFileDescriptors(std::vector<int>&& descriptors) noexcept;
+    void reset() noexcept;
+
+    std::vector<int> descriptors_{};
+};
+
+using FileDescriptorResult = TransportResult<ReceivedFileDescriptors>;
+
 class ControlSocket final {
 public:
     ControlSocket() noexcept = default;
@@ -55,6 +81,10 @@ public:
                                      std::size_t size) noexcept;
     [[nodiscard]] IoResult write_full(const std::uint8_t* data,
                                       std::size_t size) noexcept;
+    [[nodiscard]] IoResult send_file_descriptors(const int* descriptors,
+                                                 std::size_t count) noexcept;
+    [[nodiscard]] FileDescriptorResult
+    receive_file_descriptors(std::size_t maximum_count) noexcept;
 
 private:
     friend TransportResult<ControlSocket> adopt_control_socket(int) noexcept;

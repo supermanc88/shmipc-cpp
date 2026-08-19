@@ -2,14 +2,14 @@
 
 ## Summary
 
-承载控制连接的 POSIX 系统调用边界。基础层提供 move-only Unix/TCP socket/listener、FD adoption 和 exact blocking IO；Linux 事件层提供 edge-triggered epoll、可消费读缓冲、串行并发写与确定性关闭通知。
+承载控制连接的 POSIX 系统调用边界。基础层提供 move-only Unix/TCP socket/listener、FD adoption、exact blocking IO 和 Linux `SCM_RIGHTS`；Linux 事件层提供 edge-triggered epoll、可消费读缓冲、串行并发写与确定性关闭通知。
 
 ## Directory Contents
 
 | 路径 | 类型 | 状态 | 说明 |
 |---|---|---|---|
 | `control_socket.hpp` | 内部头文件 | ✅ | transport 错误、结果、socket/listener ownership 与工厂接口 |
-| `control_socket.cpp` | C++ 实现 | ✅ | TCP/Unix connect/listen/accept、exact IO、FD flags 与路径清理 |
+| `control_socket.cpp` | C++ 实现 | ✅ | TCP/Unix、exact IO、SCM_RIGHTS、FD flags 与路径清理 |
 | `epoll_dispatcher.hpp` | 内部头文件 | ✅ | dispatcher/connection、消费回调、关闭原因与资源上限 |
 | `epoll_dispatcher.cpp` | C++ 实现 | ✅ | epoll ET、eventfd 唤醒、读缓冲、写背压与关闭生命周期 |
 
@@ -18,6 +18,8 @@
 - `ControlSocket` 和 `ControlListener` 不可复制、可移动，析构关闭唯一 owned FD；`adopt_control_socket` 从调用起接管 FD，即使配置失败也会关闭。
 - 所有创建/采用/accept 的 FD 设置 `FD_CLOEXEC`；支持 `SO_NOSIGPIPE` 的平台设置该选项，其他平台写入使用 `MSG_NOSIGNAL`。
 - `read_full/write_full` 重试 `EINTR`，保留 partial progress；EOF、would-block 与其他系统错误分类返回。
+- `send_file_descriptors` 在 Unix stream socket 上显式携带一个 NUL payload；接收端消费并验证该字节，兼容 Go `x/sys/unix.Sendmsg` 且不污染下一控制帧。
+- 每帧最多发送/接收 16 个 descriptor；接收结果是 move-only RAII owner，只有显式 `release` 的 FD 才转交上层，未知 ancillary、超限和解析失败路径也不会泄漏已收到的 FD。
 - Unix listener 不覆盖已有路径；仅在成功 bind 后拥有 unlink 责任，正常析构和 bind 后失败路径都会清理。
 - 握手前使用 blocking exact IO；切换 epoll 前由调用方显式 `set_nonblocking(true)`，保持与固定 Go 实现相同的阶段边界。
 - `EpollDispatcher::add` 消费 socket 并在注册前切换 nonblocking；连接由 dispatcher map 与调用者 `shared_ptr` 共同托管，close 只执行一次。
@@ -32,7 +34,7 @@
 - Go 从 duplicated FD 切换 dispatcher：`third_party/shmipc-go/session.go:121-177`、`event_dispatcher_linux.go:247-263`。
 - C++ ownership/exact IO 与建连：`src/transport/control_socket.cpp:18-405`。
 - C++ event connection、epoll loop 与启动/停止：`src/transport/epoll_dispatcher.cpp:68-595`。
-- `tests/control_socket_test.cpp:18-173` 覆盖 partial read、EOF、would-block、TCP、Unix、重复 bind、路径清理和错误；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 10/10 通过。
+- `tests/control_socket_test.cpp` 覆盖 partial read、EOF、would-block、TCP、Unix、重复 bind、路径清理，以及 FD 顺序、`FD_CLOEXEC`、release/析构回收和超量 descriptor；本机与远端 sanitizer 通过。
 - `tests/epoll_dispatcher_test.cpp:1-351` 覆盖 partial frame、writev、EAGAIN 背压、并发写无交错、remote/local/shutdown close、缓冲上限、callback 错误/重入 close 和非法配置；远端 GCC 8.5 Debug/Release/ASan 各 11/11，专项连续 100 次通过；提交 `17a668e` 的 run `32148166394` 七项门禁全部成功。
 
 ## Guesses & Uncertainties

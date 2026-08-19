@@ -94,6 +94,90 @@ func TestProtocolVersionNegotiationInterop(t *testing.T) {
 	})
 }
 
+func TestV3HandshakeInterop(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("memfd and SCM_RIGHTS handshake requires Linux")
+	}
+	helper := os.Getenv("SHMIPC_CPP_V3_HANDSHAKE_HELPER")
+	if helper == "" {
+		t.Fatal("SHMIPC_CPP_V3_HANDSHAKE_HELPER is not set")
+	}
+
+	config := func(queueName, bufferName string) *Config {
+		result := DefaultConfig()
+		result.LogOutput = io.Discard
+		result.InitializeTimeout = 5 * time.Second
+		result.MemMapType = MemMapTypeMemFd
+		result.QueueCap = 64
+		result.ShareMemoryBufferCap = 1 << 20
+		result.QueuePath = queueName
+		result.ShareMemoryPathPrefix = strings.TrimSuffix(bufferName, bufferPathSuffix)
+		result.BufferSliceSizes = []*SizePercentPair{{Size: 4096, Percent: 60}, {Size: 8192, Percent: 40}}
+		return result
+	}
+
+	validate := func(session *Session, queueName, bufferName string) error {
+		if session == nil || session.queueManager == nil || session.bufferManager == nil {
+			return fmt.Errorf("Go session returned incomplete resources")
+		}
+		if session.queueManager.path != queueName || session.bufferManager.path != bufferName || session.queueManager.sendQueue.cap != 64 || session.bufferManager.minSliceSize != 4096 || session.bufferManager.maxSliceSize != 8192 {
+			return fmt.Errorf("Go resources do not match C++ expectations")
+		}
+		return nil
+	}
+
+	run := func(t *testing.T, role string, goClient bool) {
+		t.Helper()
+		directory := t.TempDir()
+		socketPath := filepath.Join(directory, "control.sock")
+		queueName := filepath.Join(directory, role+"-queue")
+		bufferName := filepath.Join(directory, role) + bufferPathSuffix
+		mappedSignal := filepath.Join(directory, role+"-mapped")
+		listener, err := net.Listen("unix", socketPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer listener.Close()
+		command := exec.Command(helper, role, socketPath, queueName, bufferName, mappedSignal)
+		var output bytes.Buffer
+		command.Stdout = &output
+		command.Stderr = &output
+		if err := command.Start(); err != nil {
+			t.Fatal(err)
+		}
+		connection, err := listener.Accept()
+		if err != nil {
+			command.Process.Kill()
+			t.Fatal(err)
+		}
+		session, sessionErr := newSession(config(queueName, bufferName), connection, goClient)
+		if sessionErr == nil {
+			sessionErr = validate(session, queueName, bufferName)
+		}
+		if sessionErr == nil {
+			sessionErr = os.WriteFile(mappedSignal, []byte("mapped"), 0o600)
+		}
+		if sessionErr != nil {
+			connection.Close()
+			command.Process.Kill()
+		}
+		helperErr := command.Wait()
+		if sessionErr != nil || helperErr != nil {
+			t.Fatalf("Go session=%v C++ helper=%v output=%s", sessionErr, helperErr, output.String())
+		}
+		if err := session.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("GoClientToCppServer", func(t *testing.T) {
+		run(t, "server", true)
+	})
+	t.Run("CppClientToGoServer", func(t *testing.T) {
+		run(t, "client", false)
+	})
+}
+
 func TestV2HandshakeInterop(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("full shmipc Session initialization requires Linux")

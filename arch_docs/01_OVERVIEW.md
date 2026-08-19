@@ -117,13 +117,14 @@
 - C++ 质量入口：`SHMIPC_WARNINGS_AS_ERRORS`、`SHMIPC_ENABLE_ASAN`、`SHMIPC_ENABLE_UBSAN`、`SHMIPC_ENABLE_TSAN`；ASan 与 TSan 在配置阶段互斥。
 - C++ 控制协议入口：`src/protocol/control_codec.hpp`。当前提供 header、事件 0..9、v2/v3 metadata 与 fallback 的大端编解码；以明确错误分类拒绝截断、非法字段、错误事件、尾随字节和超过默认 64 MiB 上限的帧。该接口暂为内部 API。
 - C++ v2 握手入口：`src/core/v2_handshake.hpp`。client 创建 buffer/双 queue 并发送路径 metadata，server 反向映射 queue 视图；成功后 socket 保留给后续 Session/epoll，失败时 creator 文件由 RAII 清理。
+- C++ v3 握手入口：`src/core/v3_handshake.hpp`。版本协商后按 ready ACK、`[buffer_fd, queue_fd]` SCM_RIGHTS、share-memory ACK 顺序完成两个 memfd 的双向映射；descriptor 和失败回滚均由 move-only RAII owner 管理。
 - C++ v2 单 Stream 入口：`src/core/v2_client_session.hpp`。当前 client 固定首个 Stream ID 1，以 buffer chain + queue element 传递完整消息，以 Polling 唤醒对端并支持 queue/control close；fallback、多 Stream 与 server 端尚未纳入。
 - C++ queue 布局入口：`src/shm/queue_layout.hpp`。以 `memcpy` 对 mmap 字节做本机字节序访问，显式区分 amd64 与 arm64 header offsets。运行期入口 `src/shm/shared_queue.hpp` 只接受本机布局，以本地 mutex 串行化 producers、seq_cst 共享原子发布/消费 element，并实现 batch 与 working flag 状态机。
 - C++ buffer 布局入口：`src/shm/buffer_layout.hpp`。显式定义 8 字节 manager、36 字节 list 与 20 字节 slice header；creator 与 mapper 的本地净 pop/push counters 分别位于 `+20/+24`，普通布局访问使用 `memcpy`。
 - C++ mapping 入口：`src/shm/shared_memory_region.hpp`。move-only owner 统一管理 `munmap`、memfd descriptor 与创建端路径清理；文件 mapper 不 unlink，memfd API 显式区分 borrowed/transferred descriptor。
 - C++ buffer pool 入口：`src/shm/buffer_pool.hpp`。单 slice 从最小合适档位开始，chain 从最大档位向下分配；size/head/tail/counters 使用 lock-free seq_cst 原子，publish/adopt 以绝对 offset 在进程间转移链式 slice 所有权。
 - C++ Buffer IO 入口：`src/shm/buffer_io.hpp`。Writer 复现 Go 的最大档位连续分配策略并发布 chain；Reader 对单片返回 pinned 借用 view、对跨片返回 owned copy，`release_previous_read` 与 RAII 析构负责回收。
-- C++ control transport 入口：`src/transport/control_socket.hpp` 与 `epoll_dispatcher.hpp`。握手期使用 move-only Unix/TCP socket 和 exact blocking IO；事件期切换 nonblocking edge-triggered epoll，以消费式缓冲 callback、串行写和 eventfd 停止管理连接。
+- C++ control transport 入口：`src/transport/control_socket.hpp` 与 `epoll_dispatcher.hpp`。握手期使用 move-only Unix/TCP socket、exact blocking IO 和 Linux SCM_RIGHTS；事件期切换 nonblocking edge-triggered epoll，以消费式缓冲 callback、串行写和 eventfd 停止管理连接。
 - Go oracle 入口：`go run tools/go_oracle/run_control_header_oracle.go`；严格校验 submodule commit 后，以 overlay 调用上游 header、metadata 与 fallback 编码器核对三份 golden。CMake 可通过 `SHMIPC_ENABLE_GO_ORACLE_TESTS=ON` 将其加入 CTest。
 - C++ CI 入口：`.github/workflows/ci.yml`。Ubuntu 24.04 上运行 GCC/Clang × Debug/Release 四项构建、CTest 和安装；另以 GCC 分别运行 ASan+UBSan 与 TSan，并以 Go 1.25.10 运行协议/数据平面 oracle。
 - 本地测试：`go test ./...`；上游测试实际依赖 Linux，macOS 不构成有效通过环境。
@@ -146,6 +147,8 @@
 - `S-0303` 验证：C++ client 与 C++ test peer、真实 Go server 均完成 20,000 字节请求和 17,000 字节响应，覆盖跨 slice adopt/recycle、Polling、receive timeout 与双向 close；远端 GCC 8.5 Debug/ASan 及 Go 互操作 50/50 通过；提交 `050d7da` 的 run `32154121843` 七项门禁全部成功，Go protocol oracle 为 14/14。
 - `S-0304` 验证：C++ server 动态绑定 Go client 首个 Stream ID 2，三条请求/响应覆盖 20,000/17,000 字节跨 slice、批量 Polling 与两方向 close；远端 Debug/ASan 14/14、普通互操作 300/300、ASan helper 50/50 通过；提交 `0347f34` 的 run `32158446306` 七项门禁全部成功，Go protocol oracle 为 15/15。压力测试同时证明 v2 无 ACK 时 mapper 必须允许 creator 已有活动 allocation。
 - `S-0301` 验证：socket 基础层覆盖 partial/EOF/would-block、TCP/Unix 和路径所有权；Linux epoll 层覆盖 partial frame 保留、writev、EAGAIN 背压、并发写无交错、关闭原因/唯一通知、callback 契约和缓冲上限。远端 GCC 8.5 Debug/Release/ASan 11/11、专项连续 100 次通过；提交 `17a668e` 的 run `32148166394` 七项门禁全部成功，切片关闭。
+- `S-0401` 验证：提交 `807b4fa` 的 GitHub Actions run `32207020590` 七项门禁全部成功。
+- `S-0402` 验证：完整 v3 memfd 握手通过本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 17/17；固定 Go `newSession` 两方向普通 100 轮、ASan helper 20 轮通过，等待云端门禁。
 - 时钟注意：本机当前比远端快约 2 分 20 秒；同步时不得保留本机文件时间戳，否则 Ninja 会反复重新生成。标准命令见 `PROJECT_WORKFLOW.md`。
 - Linux 运行基线：本机用 Go 1.25.10 交叉编译固定提交的 amd64 测试二进制，rsync 至远端后完整测试 `PASS`、退出码 0；覆盖 v2、v3/memfd、队列、Stream/Session 和热重启路径。
 - CI：`.github/workflows/tests.yaml` 在 Ubuntu 运行单测/benchmark，并在自托管 Linux 上覆盖 Go 1.21–1.25；`.github/workflows/pre_check.yaml` 运行许可证、拼写和 golangci-lint。

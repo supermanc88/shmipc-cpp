@@ -26,6 +26,7 @@ add_library(
     src/core/v2_client_session.cpp
     src/core/v2_handshake.cpp
     src/core/v2_multiplexed_session.cpp
+    src/core/v3_handshake.cpp
     src/protocol/control_codec.cpp
     src/shm/buffer_layout.cpp
     src/shm/buffer_io.cpp

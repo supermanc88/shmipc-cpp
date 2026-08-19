@@ -2,7 +2,9 @@
 
 #include <cerrno>
 #include <cstring>
+#include <limits>
 #include <utility>
+#include <vector>
 
 #include <fcntl.h>
 #include <netdb.h>
@@ -62,7 +64,63 @@ int send_flags() noexcept {
 #endif
 }
 
+constexpr std::size_t maximum_descriptor_transfer_count = 16U;
+
+#if defined(__linux__)
+TransportError descriptor_error(int error) noexcept {
+    return error == EAGAIN || error == EWOULDBLOCK
+               ? TransportError::would_block
+               : TransportError::system_error;
+}
+#endif
+
 }  // namespace
+
+ReceivedFileDescriptors::ReceivedFileDescriptors(
+    std::vector<int>&& descriptors) noexcept
+    : descriptors_(std::move(descriptors)) {}
+
+ReceivedFileDescriptors::~ReceivedFileDescriptors() noexcept { reset(); }
+
+ReceivedFileDescriptors::ReceivedFileDescriptors(
+    ReceivedFileDescriptors&& other) noexcept
+    : descriptors_(std::move(other.descriptors_)) {
+    other.descriptors_.clear();
+}
+
+ReceivedFileDescriptors&
+ReceivedFileDescriptors::operator=(ReceivedFileDescriptors&& other) noexcept {
+    if (this != &other) {
+        reset();
+        descriptors_ = std::move(other.descriptors_);
+        other.descriptors_.clear();
+    }
+    return *this;
+}
+
+std::size_t ReceivedFileDescriptors::size() const noexcept {
+    return descriptors_.size();
+}
+
+int ReceivedFileDescriptors::at(std::size_t index) const noexcept {
+    return index < descriptors_.size() ? descriptors_[index] : -1;
+}
+
+int ReceivedFileDescriptors::release(std::size_t index) noexcept {
+    if (index >= descriptors_.size()) {
+        return -1;
+    }
+    const auto descriptor = descriptors_[index];
+    descriptors_[index] = -1;
+    return descriptor;
+}
+
+void ReceivedFileDescriptors::reset() noexcept {
+    for (auto& descriptor : descriptors_) {
+        static_cast<void>(close_fd(descriptor));
+    }
+    descriptors_.clear();
+}
 
 ControlSocket::ControlSocket(int fd) noexcept : fd_(fd) {}
 
@@ -173,6 +231,155 @@ IoResult ControlSocket::write_full(const std::uint8_t* data,
         return {{transferred}, TransportError::system_error, errno};
     }
     return {{transferred}, TransportError::none, 0};
+}
+
+IoResult ControlSocket::send_file_descriptors(const int* descriptors,
+                                              std::size_t count) noexcept {
+    if (fd_ < 0) {
+        return {{0U}, TransportError::invalid_state, EBADF};
+    }
+    if (descriptors == nullptr || count == 0U ||
+        count > maximum_descriptor_transfer_count ||
+        count > std::numeric_limits<unsigned int>::max() / sizeof(int)) {
+        return {{0U}, TransportError::invalid_argument, EINVAL};
+    }
+#if defined(__linux__)
+    for (std::size_t index = 0; index < count; ++index) {
+        if (descriptors[index] < 0) {
+            return {{0U}, TransportError::invalid_argument, EINVAL};
+        }
+    }
+    std::vector<std::uint8_t> control(CMSG_SPACE(count * sizeof(int)), 0U);
+    std::uint8_t payload = 0U;
+    iovec payload_vector{};
+    payload_vector.iov_base = &payload;
+    payload_vector.iov_len = sizeof(payload);
+    msghdr message{};
+    message.msg_iov = &payload_vector;
+    message.msg_iovlen = 1U;
+    message.msg_control = control.data();
+    message.msg_controllen = control.size();
+    auto* const header = CMSG_FIRSTHDR(&message);
+    if (header == nullptr) {
+        return {{0U}, TransportError::system_error, EIO};
+    }
+    header->cmsg_level = SOL_SOCKET;
+    header->cmsg_type = SCM_RIGHTS;
+    header->cmsg_len = CMSG_LEN(count * sizeof(int));
+    std::memcpy(CMSG_DATA(header), descriptors, count * sizeof(int));
+
+    ssize_t sent = -1;
+    do {
+        sent = ::sendmsg(fd_, &message, send_flags());
+    } while (sent < 0 && errno == EINTR);
+    if (sent < 0) {
+        const auto saved = errno;
+        return {{0U}, descriptor_error(saved), saved};
+    }
+    if (sent != 1) {
+        return {{0U}, TransportError::system_error, EIO};
+    }
+    return {{count}, TransportError::none, 0};
+#else
+    static_cast<void>(descriptors);
+    static_cast<void>(count);
+    return {{0U}, TransportError::unsupported, ENOTSUP};
+#endif
+}
+
+FileDescriptorResult
+ControlSocket::receive_file_descriptors(std::size_t maximum_count) noexcept {
+    if (fd_ < 0) {
+        return {{}, TransportError::invalid_state, EBADF};
+    }
+    if (maximum_count == 0U ||
+        maximum_count > maximum_descriptor_transfer_count ||
+        maximum_count >
+            std::numeric_limits<unsigned int>::max() / sizeof(int)) {
+        return {{}, TransportError::invalid_argument, EINVAL};
+    }
+#if defined(__linux__)
+    std::vector<std::uint8_t> control(CMSG_SPACE(maximum_count * sizeof(int)),
+                                      0U);
+    std::uint8_t payload = 0xffU;
+    iovec payload_vector{};
+    payload_vector.iov_base = &payload;
+    payload_vector.iov_len = sizeof(payload);
+    msghdr message{};
+    message.msg_iov = &payload_vector;
+    message.msg_iovlen = 1U;
+    message.msg_control = control.data();
+    message.msg_controllen = control.size();
+
+    ssize_t received_count = -1;
+    do {
+#ifdef MSG_CMSG_CLOEXEC
+        received_count = ::recvmsg(fd_, &message, MSG_CMSG_CLOEXEC);
+#else
+        received_count = ::recvmsg(fd_, &message, 0);
+#endif
+    } while (received_count < 0 && errno == EINTR);
+    if (received_count < 0) {
+        const auto saved = errno;
+        return {{}, descriptor_error(saved), saved};
+    }
+
+    std::vector<int> descriptors;
+    bool invalid_control_message = false;
+    for (auto* header = CMSG_FIRSTHDR(&message); header != nullptr;
+         header = CMSG_NXTHDR(&message, header)) {
+        if (header->cmsg_level != SOL_SOCKET ||
+            header->cmsg_type != SCM_RIGHTS) {
+            invalid_control_message = true;
+            continue;
+        }
+        if (header->cmsg_len < CMSG_LEN(0U)) {
+            invalid_control_message = true;
+            continue;
+        }
+        const auto bytes = header->cmsg_len - CMSG_LEN(0U);
+        if (bytes == 0U || bytes % sizeof(int) != 0U) {
+            invalid_control_message = true;
+            continue;
+        }
+        const auto descriptor_count = bytes / sizeof(int);
+        const auto* received = reinterpret_cast<const int*>(CMSG_DATA(header));
+        descriptors.insert(descriptors.end(), received,
+                           received + descriptor_count);
+    }
+    ReceivedFileDescriptors result(std::move(descriptors));
+    if ((message.msg_flags & MSG_CTRUNC) != 0 ||
+        result.size() > maximum_count) {
+        return {std::move(result), TransportError::buffer_limit, EMSGSIZE};
+    }
+    if (invalid_control_message) {
+        return {std::move(result), TransportError::invalid_argument, EPROTO};
+    }
+    if (result.size() == 0U) {
+        return {std::move(result),
+                received_count == 0 ? TransportError::end_of_stream
+                                    : TransportError::invalid_argument,
+                received_count == 0 ? 0 : EPROTO};
+    }
+    if (received_count != 1 || payload != 0U) {
+        return {std::move(result), TransportError::invalid_argument, EPROTO};
+    }
+#ifndef MSG_CMSG_CLOEXEC
+    for (std::size_t index = 0; index < result.size(); ++index) {
+        const auto descriptor = result.at(index);
+        const auto flags = ::fcntl(descriptor, F_GETFD);
+        if (flags < 0 ||
+            ::fcntl(descriptor, F_SETFD, flags | FD_CLOEXEC) != 0) {
+            const auto saved = errno;
+            return {std::move(result), TransportError::system_error, saved};
+        }
+    }
+#endif
+    return {std::move(result), TransportError::none, 0};
+#else
+    static_cast<void>(maximum_count);
+    return {{}, TransportError::unsupported, ENOTSUP};
+#endif
 }
 
 ControlListener::ControlListener(int fd, std::string unix_path) noexcept

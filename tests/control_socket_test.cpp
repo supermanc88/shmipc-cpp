@@ -1,6 +1,7 @@
 #include "transport/control_socket.hpp"
 
 #include <array>
+#include <cerrno>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -8,6 +9,7 @@
 #include <string>
 #include <thread>
 
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -133,6 +135,89 @@ bool test_unix_transport_and_cleanup() {
     return result && cleaned;
 }
 
+bool test_file_descriptor_transfer() {
+    int descriptors[2] = {-1, -1};
+    if (::socketpair(AF_UNIX, SOCK_STREAM, 0, descriptors) != 0) {
+        return false;
+    }
+    auto sender = shmipc::transport::adopt_control_socket(descriptors[0]);
+    auto receiver = shmipc::transport::adopt_control_socket(descriptors[1]);
+    if (!sender || !receiver) {
+        return false;
+    }
+#if defined(__linux__)
+    int first_pipe[2] = {-1, -1};
+    int second_pipe[2] = {-1, -1};
+    if (::pipe(first_pipe) != 0 || ::pipe(second_pipe) != 0) {
+        return false;
+    }
+    const std::array<int, 2> sent_descriptors{{first_pipe[0], second_pipe[1]}};
+    const auto sent = sender.value.send_file_descriptors(
+        sent_descriptors.data(), sent_descriptors.size());
+    auto received = receiver.value.receive_file_descriptors(2U);
+    if (!sent || sent.value.transferred != 2U || !received ||
+        received.value.size() != 2U || received.value.at(0U) < 0 ||
+        received.value.at(1U) < 0 ||
+        (::fcntl(received.value.at(0U), F_GETFD) & FD_CLOEXEC) == 0 ||
+        (::fcntl(received.value.at(1U), F_GETFD) & FD_CLOEXEC) == 0) {
+        return false;
+    }
+    const std::uint8_t first_value = 0x41U;
+    const std::uint8_t second_value = 0x52U;
+    std::uint8_t observed = 0U;
+    if (::write(first_pipe[1], &first_value, 1U) != 1 ||
+        ::read(received.value.at(0U), &observed, 1U) != 1 ||
+        observed != first_value ||
+        ::write(received.value.at(1U), &second_value, 1U) != 1 ||
+        ::read(second_pipe[0], &observed, 1U) != 1 ||
+        observed != second_value) {
+        return false;
+    }
+    const auto released = received.value.release(0U);
+    const auto retained = received.value.at(1U);
+    received = {};
+    errno = 0;
+    const bool retained_closed =
+        ::fcntl(retained, F_GETFD) == -1 && errno == EBADF;
+    const bool released_open = ::fcntl(released, F_GETFD) >= 0;
+    static_cast<void>(::close(released));
+    static_cast<void>(::close(first_pipe[0]));
+    static_cast<void>(::close(first_pipe[1]));
+    static_cast<void>(::close(second_pipe[0]));
+    static_cast<void>(::close(second_pipe[1]));
+    return retained_closed && released_open;
+#else
+    const int descriptor = 0;
+    return sender.value.send_file_descriptors(&descriptor, 1U).error ==
+               TransportError::unsupported &&
+           receiver.value.receive_file_descriptors(1U).error ==
+               TransportError::unsupported;
+#endif
+}
+
+bool test_file_descriptor_count_limits() {
+#if defined(__linux__)
+    int descriptors[2] = {-1, -1};
+    int pipe_descriptors[2] = {-1, -1};
+    if (::socketpair(AF_UNIX, SOCK_STREAM, 0, descriptors) != 0 ||
+        ::pipe(pipe_descriptors) != 0) {
+        return false;
+    }
+    auto sender = shmipc::transport::adopt_control_socket(descriptors[0]);
+    auto receiver = shmipc::transport::adopt_control_socket(descriptors[1]);
+    const std::array<int, 3> too_many{
+        {pipe_descriptors[0], pipe_descriptors[0], pipe_descriptors[0]}};
+    const auto sent =
+        sender.value.send_file_descriptors(too_many.data(), too_many.size());
+    auto received = receiver.value.receive_file_descriptors(2U);
+    static_cast<void>(::close(pipe_descriptors[0]));
+    static_cast<void>(::close(pipe_descriptors[1]));
+    return sent && received.error == TransportError::buffer_limit;
+#else
+    return true;
+#endif
+}
+
 bool test_move_and_errors() {
     auto invalid = shmipc::transport::adopt_control_socket(-1);
     shmipc::transport::ControlSocket empty;
@@ -140,6 +225,8 @@ bool test_move_and_errors() {
     return !invalid &&
            invalid.error == TransportError::invalid_argument &&
            empty.read_full(&byte, 1U).error == TransportError::invalid_state &&
+           empty.send_file_descriptors(nullptr, 0U).error ==
+               TransportError::invalid_state &&
            shmipc::transport::connect_tcp("", 1U).error ==
                TransportError::invalid_argument &&
            shmipc::transport::listen_unix("", 1).error ==
@@ -163,6 +250,14 @@ int main() {
     }
     if (!test_unix_transport_and_cleanup()) {
         std::cerr << "control socket Unix test failed\n";
+        return 1;
+    }
+    if (!test_file_descriptor_transfer()) {
+        std::cerr << "control socket FD transfer test failed\n";
+        return 1;
+    }
+    if (!test_file_descriptor_count_limits()) {
+        std::cerr << "control socket FD count-limit test failed\n";
         return 1;
     }
     if (!test_move_and_errors()) {

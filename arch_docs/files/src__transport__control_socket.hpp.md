@@ -28,7 +28,8 @@
 
 ## Classes（全量）
 
-- `ControlSocket`：move-only FD owner；提供 `native_handle`、`release`、`close`、`shutdown`、`set_nonblocking`、`read_full` 与 `write_full`。
+- `ReceivedFileDescriptors`：move-only descriptor 集合；析构关闭所有未显式 `release(index)` 的 FD。
+- `ControlSocket`：move-only FD owner；除基础生命周期和 exact IO 外，提供 `send_file_descriptors` 与 `receive_file_descriptors`。
 - `ControlListener`：move-only listening FD owner；提供 `accept`、`local_port` 和 `close`。Unix listener 额外拥有已绑定路径的 unlink 责任。
 
 ## Functions（全量）

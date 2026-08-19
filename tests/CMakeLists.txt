@@ -104,6 +104,14 @@ shmipc_apply_project_options(shmipc_protocol_version_negotiation_test)
 add_test(NAME shmipc.protocol_version_negotiation
          COMMAND shmipc_protocol_version_negotiation_test)
 
+add_executable(shmipc_v3_handshake_test v3_handshake_test.cpp)
+target_link_libraries(shmipc_v3_handshake_test
+                      PRIVATE shmipc::shmipc Threads::Threads)
+target_include_directories(shmipc_v3_handshake_test
+                           PRIVATE ${PROJECT_SOURCE_DIR}/src)
+shmipc_apply_project_options(shmipc_v3_handshake_test)
+add_test(NAME shmipc.v3_handshake COMMAND shmipc_v3_handshake_test)
+
 add_executable(shmipc_v2_client_session_test v2_client_session_test.cpp)
 target_link_libraries(shmipc_v2_client_session_test PRIVATE shmipc::shmipc Threads::Threads)
 target_include_directories(shmipc_v2_client_session_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
@@ -147,6 +155,14 @@ target_include_directories(
 shmipc_apply_project_options(
     shmipc_protocol_version_negotiation_interop_helper)
 
+add_executable(shmipc_v3_handshake_interop_helper
+               v3_handshake_interop_helper.cpp)
+target_link_libraries(shmipc_v3_handshake_interop_helper
+                      PRIVATE shmipc::shmipc Threads::Threads)
+target_include_directories(shmipc_v3_handshake_interop_helper
+                           PRIVATE ${PROJECT_SOURCE_DIR}/src)
+shmipc_apply_project_options(shmipc_v3_handshake_interop_helper)
+
 add_executable(shmipc_v2_client_session_interop_helper v2_client_session_interop_helper.cpp)
 target_link_libraries(shmipc_v2_client_session_interop_helper PRIVATE shmipc::shmipc Threads::Threads)
 target_include_directories(shmipc_v2_client_session_interop_helper PRIVATE ${PROJECT_SOURCE_DIR}/src)
@@ -175,6 +191,7 @@ if(SHMIPC_ENABLE_GO_ORACLE_TESTS)
             SHMIPC_CPP_QUEUE_HELPER=$<TARGET_FILE:shmipc_shared_queue_interop_helper>
             SHMIPC_CPP_V2_HANDSHAKE_HELPER=$<TARGET_FILE:shmipc_v2_handshake_interop_helper>
             SHMIPC_CPP_PROTOCOL_VERSION_NEGOTIATION_HELPER=$<TARGET_FILE:shmipc_protocol_version_negotiation_interop_helper>
+            SHMIPC_CPP_V3_HANDSHAKE_HELPER=$<TARGET_FILE:shmipc_v3_handshake_interop_helper>
             SHMIPC_CPP_V2_CLIENT_SESSION_HELPER=$<TARGET_FILE:shmipc_v2_client_session_interop_helper>
             SHMIPC_CPP_V2_SERVER_SESSION_HELPER=$<TARGET_FILE:shmipc_v2_server_session_interop_helper>
             SHMIPC_CPP_V2_MULTIPLEXED_SESSION_HELPER=$<TARGET_FILE:shmipc_v2_multiplexed_session_interop_helper>

@@ -233,6 +233,15 @@
 - 模块边界：协商 API 借用 blocking socket，不创建/映射共享内存，不收发 FD；S-0402 依据 selected version 3 才进入 SCM_RIGHTS。
 - 证据：固定 Go `protocol_manager.go:75-117,179-184`、`protocol_initializer.go:75-120`；C++ 单元异常矩阵，本机 Debug/ASan+UBSan/TSan 16/16、oracle 17/17；远端 GCC 8.5 Debug/ASan 16/16、双向 Go oracle 20 轮。
 
+### D-028：v3 FD 传递采用单 NUL payload、固定顺序和严格接收 ownership
+
+- 状态：已验证；本机/远端门禁与固定 Go 双向 oracle 通过，待云端门禁
+- Go 兼容：`golang.org/x/sys/unix.Sendmsg` 在 stream socket 的空 payload 场景补入一个 NUL。C++ 发送端显式携带同一字节，接收端必须消费并验证它，防止 NUL 留在字节流中破坏下一 ACK header。
+- 线序：单次 `SCM_RIGHTS` 固定发送 `[buffer_fd, queue_fd]`；C++ server 严格要求恰好两个 descriptor。数量不足或超出都视为握手失败，避免默默接受来源不明的额外能力。
+- ownership：ancillary 接收结果是 move-only RAII owner；解析中已经取得的 descriptor 在未知 cmsg、超限、映射或后续初始化失败时自动关闭，只有显式 release 的两个 FD 才转移给 `SharedMemoryRegion`。
+- ACK：server 先发送 `AckReadyRecvFD` 再接收 descriptors，并仅在 queue、buffer、pool 全部映射成功后发送 `AckShareMemory`。
+- 证据：`third_party/shmipc-go/block_io.go`、`protocol_initializer.go`；`src/transport/control_socket.*`、`src/core/v3_handshake.*`、`tests/control_socket_test.cpp`、`tests/v3_handshake_test.cpp` 与 `TestV3HandshakeInterop`。本机 Debug/ASan+UBSan/TSan，远端 GCC 8.5 Debug/ASan、普通双向 100 轮和 ASan 20 轮通过。
+
 ## 设计风险与待验证事实
 
 ### R-001：共享内存使用本机字节序和手工 offset
@@ -313,3 +322,5 @@
 - 2026-08-19：`S-0305` 源码追踪证伪“奇偶 Stream ID”注释假设；固定 Go 实现按 1 递增且只支持 client-originated Open→server Accept。计划改为连续 ID 与单向开流兼容矩阵。影响文档：本文件、移植计划。
 - 2026-08-19：提交 `78913e6` 的 GitHub Actions run `32204938990` 中 GCC/Clang Debug/Release、ASan+UBSan、TSan 与 Go protocol oracle 七项作业全部成功；oracle CTest 16/16，`S-0305a/b` 与 M3 正式关闭。影响文档：索引、本文件、core/oracle 目录、项目计划、工作流和功能矩阵。
 - 2026-08-19：`S-0401` 新增独立 v3 版本协商状态机，固化 client 可降级、server 仅接受 v3 首帧的非对称语义；本机三套 sanitizer、固定 Go oracle 17/17、远端 GCC 8.5 Debug/ASan 16/16及双向互操作 20 轮通过，等待云端门禁。影响文档：索引、本文件、core/oracle 目录、版本协商文件、项目计划和回归指南。
+- 2026-08-19：提交 `807b4fa` 的 GitHub Actions run `32207020590` 七项作业全部成功，`S-0401` 云端门禁关闭。
+- 2026-08-19：`S-0402` 新增 Linux SCM_RIGHTS RAII descriptor 传递与完整 v3 memfd 资源握手，固定单 NUL payload、`[buffer, queue]` 线序、严格两个 FD 和 ACK 时序；本机三套配置、远端 Debug/ASan、固定 Go `newSession` 双向普通 100 轮和 ASan 20 轮通过，等待云端门禁。影响文档：索引、概要、本文件、core/transport/oracle 目录、v3/control socket 文件、移植计划和回归指南。
