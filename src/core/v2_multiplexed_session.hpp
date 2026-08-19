@@ -29,6 +29,7 @@ public:
 
   [[nodiscard]] explicit operator bool() const noexcept;
   [[nodiscard]] std::uint32_t id() const noexcept;
+  [[nodiscard]] bool is_fallback() const;
   [[nodiscard]] V2SessionStatus send(const std::uint8_t *data,
                                      std::size_t size);
   [[nodiscard]] V2SessionStatus send(const std::vector<std::uint8_t> &data);

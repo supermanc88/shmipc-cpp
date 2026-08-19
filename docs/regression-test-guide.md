@@ -79,8 +79,8 @@ ssh 23.2 'cd /home/chm/shmipc-cpp && \
 - `shmipc.v3_handshake`：Linux 上验证完整 memfd 握手、queue 方向、错误 ready/final ACK、1/3 个 FD、截断 metadata、异常回滚和 descriptor 无泄漏；非 Linux 明确验证 unsupported。
 - `shmipc.v2_client_session`：Linux 上验证单 Stream 20,000→17,000 字节跨 slice round-trip、receive timeout、Polling 和双向 queue close；非 Linux 明确验证 epoll unsupported。
 - `shmipc.v2_server_session`：Linux 上验证动态绑定远端 Stream ID 2、三消息批量 Polling、跨 slice、timeout 与双向 queue close；非 Linux 明确验证 epoll unsupported。
-- `shmipc.v2_multiplexed_session`：Linux 上验证 client ID 2/3/4、并发首包、server Accept、独立双向消息、persistent deadline、queue-full retry/close fallback、并发 send/close、Session failure 扇出、无 ACK close 的两个主动关闭方向与 Stream/Session 资源生命周期。
-- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用真实 C++ helpers 双向传递 slice chain/queue elements；验证两个方向的 v3 版本协商与真实 `newSession` memfd 资源握手，并在 Linux 验证两个方向的 v2 握手，以及 C++ client/server 两个方向的单 Stream 和 3 Stream 数据与关闭。
+- `shmipc.v2_multiplexed_session`：Linux 上验证 client ID 2/3/4、并发首包、server Accept、独立双向消息、persistent deadline、queue-full retry/close fallback、buffer 耗尽数据 fallback、sticky ordering、并发 send/close、Session failure 扇出与资源生命周期。
+- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用真实 C++ helpers 双向传递 slice chain/queue elements；验证两个方向的 v3 版本协商与真实 `newSession` memfd 资源握手，并在 Linux 验证 v2 握手、单/多 Stream，以及 shared→fallback→sticky→反向 fallback ACK。
 - 任一 commit mismatch、缺行、重复/错序事件或字节差异均为失败，不允许自动更新 golden 后绕过评审。
 
 当前 golden 的 SHA-256：

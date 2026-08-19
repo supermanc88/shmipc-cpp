@@ -48,17 +48,23 @@ std::uint32_t read_u32(const std::uint8_t *data) noexcept {
 struct V2StreamState final {
   explicit V2StreamState(std::uint32_t stream_id) noexcept : id(stream_id) {}
 
+  struct IncomingMessage {
+    std::vector<std::uint8_t> data{};
+    bool fallback{false};
+  };
+
   const std::uint32_t id;
   std::mutex send_mutex{};
   std::mutex mutex{};
   std::condition_variable condition{};
-  std::deque<std::vector<std::uint8_t>> messages{};
+  std::deque<IncomingMessage> messages{};
   V2SessionStatus failure{};
   std::optional<V2Stream::Deadline> read_deadline{};
   std::optional<V2Stream::Deadline> write_deadline{};
   std::uint64_t deadline_generation{0U};
   bool local_closed{false};
   bool remote_closed{false};
+  bool fallback{false};
 };
 
 struct V2MultiplexedSessionState final : transport::ControlEventCallback {
@@ -88,6 +94,18 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
       if (header.value.type == protocol::EventType::polling &&
           header.value.length == protocol::header_size) {
         status = drain_receive_queue();
+      } else if (header.value.type == protocol::EventType::fallback_data) {
+        const auto fallback = protocol::decode_fallback_data(
+            data + consumed, header.value.length);
+        if (!fallback) {
+          status = make_session_error(V2SessionError::codec_error);
+          status.codec_error = fallback.error;
+        } else if (fallback.value.stream_state != stream_opened) {
+          status = make_session_error(V2SessionError::unexpected_event);
+        } else {
+          status = deliver_message(fallback.value.stream_id,
+                                   std::move(fallback.value.payload), true);
+        }
       } else if (header.value.type == protocol::EventType::stream_close &&
                  header.value.length == stream_close_frame_size) {
         mark_remote_closed(read_u32(data + consumed + protocol::header_size));
@@ -173,10 +191,6 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
         status.buffer_io_error = reader.error;
         return status;
       }
-      auto stream = find_or_accept_stream(element.value.sequence_id);
-      if (!stream) {
-        continue;
-      }
       if (reader.value.remaining() > std::numeric_limits<std::size_t>::max()) {
         return make_session_error(V2SessionError::buffer_io_error);
       }
@@ -191,14 +205,29 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
       if (!message.empty()) {
         std::memcpy(message.data(), view.value.data(), message.size());
       }
-      {
-        std::lock_guard<std::mutex> lock(stream->mutex);
-        if (!stream->remote_closed) {
-          stream->messages.push_back(std::move(message));
-        }
+      const auto delivered =
+          deliver_message(element.value.sequence_id, std::move(message), false);
+      if (!delivered) {
+        return delivered;
       }
-      stream->condition.notify_all();
     }
+  }
+
+  V2SessionStatus deliver_message(std::uint32_t id,
+                                  std::vector<std::uint8_t> message,
+                                  bool fallback) {
+    auto stream = find_or_accept_stream(id);
+    if (!stream) {
+      return {};
+    }
+    {
+      std::lock_guard<std::mutex> lock(stream->mutex);
+      if (!stream->remote_closed) {
+        stream->messages.push_back({std::move(message), fallback});
+      }
+    }
+    stream->condition.notify_all();
+    return {};
   }
 
   void mark_remote_closed(std::uint32_t id) {
@@ -351,6 +380,21 @@ V2SessionStatus send_stream_close_fallback(
   return result ? V2SessionStatus{} : make_transport_error(result);
 }
 
+V2SessionStatus send_fallback_data(
+    std::uint32_t stream_id, const std::uint8_t *data, std::size_t size,
+    const std::shared_ptr<transport::EventConnection> &connection) {
+  const std::vector<std::uint8_t> payload(data, data + size);
+  const auto frame = protocol::encode_fallback_data(
+      v2_protocol_version, stream_id, stream_opened, payload);
+  if (!frame) {
+    auto status = make_session_error(V2SessionError::codec_error);
+    status.codec_error = frame.error;
+    return status;
+  }
+  const auto result = connection->write(frame.value.data(), frame.value.size());
+  return result ? V2SessionStatus{} : make_transport_error(result);
+}
+
 } // namespace
 
 V2Stream::V2Stream(
@@ -388,11 +432,20 @@ std::uint32_t V2Stream::id() const noexcept {
   return stream_ ? stream_->id : 0U;
 }
 
+bool V2Stream::is_fallback() const {
+  if (!stream_) {
+    return false;
+  }
+  std::lock_guard<std::mutex> lock(stream_->mutex);
+  return stream_->fallback;
+}
+
 V2SessionStatus V2Stream::send(const std::uint8_t *data, std::size_t size) {
   if (!session_ || !stream_ || !connection_ || data == nullptr || size == 0U) {
     return make_session_error(V2SessionError::invalid_argument);
   }
   std::lock_guard<std::mutex> send_lock(stream_->send_mutex);
+  bool fallback = false;
   {
     std::lock_guard<std::mutex> lock(stream_->mutex);
     if (stream_->local_closed || stream_->remote_closed) {
@@ -401,10 +454,27 @@ V2SessionStatus V2Stream::send(const std::uint8_t *data, std::size_t size) {
     if (!stream_->failure) {
       return stream_->failure;
     }
+    fallback = stream_->fallback;
+  }
+  if (fallback) {
+    return send_fallback_data(stream_->id, data, size, connection_);
   }
   shm::BufferWriter writer(session_->shared_memory.buffer_pool());
   const auto written = writer.write_bytes(data, size);
   if (!written) {
+    if (written.error == shm::BufferIoError::no_buffer) {
+      {
+        std::lock_guard<std::mutex> lock(stream_->mutex);
+        if (stream_->local_closed || stream_->remote_closed) {
+          return make_session_error(V2SessionError::closed);
+        }
+        if (!stream_->failure) {
+          return stream_->failure;
+        }
+        stream_->fallback = true;
+      }
+      return send_fallback_data(stream_->id, data, size, connection_);
+    }
     auto status = make_session_error(V2SessionError::buffer_io_error);
     status.buffer_io_error = written.error;
     return status;
@@ -473,7 +543,10 @@ V2Stream::MessageResult V2Stream::receive(std::chrono::milliseconds timeout) {
   if (!stream_->messages.empty()) {
     auto message = std::move(stream_->messages.front());
     stream_->messages.pop_front();
-    return {std::move(message), {}};
+    if (message.fallback) {
+      stream_->fallback = true;
+    }
+    return {std::move(message.data), {}};
   }
   if (!stream_->failure) {
     return {{}, stream_->failure};

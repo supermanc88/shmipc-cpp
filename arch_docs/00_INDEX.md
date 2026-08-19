@@ -156,7 +156,7 @@
 | Stream 多路复用 | `session.go`, `stream.go`, `src/core/v2_multiplexed_session.*` | `STREAM-001..004` |
 | C++ v2 单 Stream 双角色 | `src/core/v2_{client,server}_session.*`, `tests/v2_*_session*` | `COMP-001`, `STREAM-001..002` |
 | C++ v2 client-originated 多 Stream | `src/core/v2_multiplexed_session.*`, `tests/v2_multiplexed_session*` | `COMP-001`, `STREAM-001..002` |
-| 控制通道 fallback | `stream.go`, `protocol_manager.go` | `STREAM-003` |
+| 控制通道 sticky fallback | `src/core/v2_multiplexed_session.*`, `stream.go`, `protocol_manager.go` | `STREAM-003` |
 | 服务监听和热重启 | `listener.go`, `session_manager.go` | `API-002`, `OPS-001` |
 | 性能与稳定性指标 | `stats.go`, `bench_test.go` | `NFR-003`, `OBS-001` |
 
@@ -165,9 +165,10 @@
 - 已完成：上游架构分析、M0、M1、M2，以及 M3 `S-0301..0304`；提交 `0347f34` 的 run `32158446306` 七项门禁全部成功，Go protocol oracle 为 15/15。
 - 已完成：`S-0305a/b` 多 Stream、deadline、queue-full retry/close fallback、路由回收和 Session 错误扇出已通过提交 `78913e6` 的云端七项门禁，M3 正式关闭。
 - 已完成：`S-0401` 的提交 `807b4fa` 经 GitHub Actions run `32207020590` 七项门禁通过。
-- 已完成：`S-0402` 完整 v3 memfd/SCM_RIGHTS 资源握手；本机三套配置、远端 GCC 8.5 Debug/ASan、固定 Go `newSession` 双向普通 100 轮及 ASan 20 轮通过，等待提交后的云端门禁。
+- 已完成：`S-0402` 的提交 `568817c` 经 GitHub Actions run `32209295664` 七项门禁通过。
+- 进行中：`S-0403a` 多路 Session 数据 fallback 与 per-Stream sticky ordering 已通过本机三套专项、远端 Debug/ASan、固定 Go 双向普通 50 轮及 ASan 10 轮；待完整门禁与提交。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
-- 待验证：将 v3 资源接入 Session 数据面、共享内存耗尽的数据 fallback 与更完整的异常注入矩阵。v3 握手、版本协商、多 Stream 两个角色及 deadline/关闭/Session 断开已完成本机和远端验证。
+- 待验证：将已验证的 fallback 数据面接入 v3 资源、fallback/close 跨通道边界和更完整的异常注入矩阵。v3 握手、数据 sticky fallback、版本协商及多 Stream 生命周期已完成本机和远端验证。
 
 ## 状态标记
 

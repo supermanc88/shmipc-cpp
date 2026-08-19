@@ -119,6 +119,7 @@
 - C++ v2 握手入口：`src/core/v2_handshake.hpp`。client 创建 buffer/双 queue 并发送路径 metadata，server 反向映射 queue 视图；成功后 socket 保留给后续 Session/epoll，失败时 creator 文件由 RAII 清理。
 - C++ v3 握手入口：`src/core/v3_handshake.hpp`。版本协商后按 ready ACK、`[buffer_fd, queue_fd]` SCM_RIGHTS、share-memory ACK 顺序完成两个 memfd 的双向映射；descriptor 和失败回滚均由 move-only RAII owner 管理。
 - C++ v2 单 Stream 入口：`src/core/v2_client_session.hpp`。当前 client 固定首个 Stream ID 1，以 buffer chain + queue element 传递完整消息，以 Polling 唤醒对端并支持 queue/control close；fallback、多 Stream 与 server 端尚未纳入。
+- C++ 多路 fallback 入口：`src/core/v2_multiplexed_session.hpp`。buffer 分配返回 `no_buffer` 时以 FallbackData 走控制连接，并永久标记该 Stream；接收方按控制事件顺序交付 fallback payload，消费后同步进入 sticky 状态。queue full 仍重试并返回错误，不触发数据 fallback。
 - C++ queue 布局入口：`src/shm/queue_layout.hpp`。以 `memcpy` 对 mmap 字节做本机字节序访问，显式区分 amd64 与 arm64 header offsets。运行期入口 `src/shm/shared_queue.hpp` 只接受本机布局，以本地 mutex 串行化 producers、seq_cst 共享原子发布/消费 element，并实现 batch 与 working flag 状态机。
 - C++ buffer 布局入口：`src/shm/buffer_layout.hpp`。显式定义 8 字节 manager、36 字节 list 与 20 字节 slice header；creator 与 mapper 的本地净 pop/push counters 分别位于 `+20/+24`，普通布局访问使用 `memcpy`。
 - C++ mapping 入口：`src/shm/shared_memory_region.hpp`。move-only owner 统一管理 `munmap`、memfd descriptor 与创建端路径清理；文件 mapper 不 unlink，memfd API 显式区分 borrowed/transferred descriptor。
@@ -149,6 +150,8 @@
 - `S-0301` 验证：socket 基础层覆盖 partial/EOF/would-block、TCP/Unix 和路径所有权；Linux epoll 层覆盖 partial frame 保留、writev、EAGAIN 背压、并发写无交错、关闭原因/唯一通知、callback 契约和缓冲上限。远端 GCC 8.5 Debug/Release/ASan 11/11、专项连续 100 次通过；提交 `17a668e` 的 run `32148166394` 七项门禁全部成功，切片关闭。
 - `S-0401` 验证：提交 `807b4fa` 的 GitHub Actions run `32207020590` 七项门禁全部成功。
 - `S-0402` 验证：完整 v3 memfd 握手通过本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 17/17；固定 Go `newSession` 两方向普通 100 轮、ASan helper 20 轮通过，等待云端门禁。
+- `S-0402` 云端验证：提交 `568817c` 的 GitHub Actions run `32209295664` 七项作业全部成功。
+- `S-0403a` 验证：共享内存耗尽触发 FallbackData，后续小消息保持 sticky；queue full 不切换。固定 Go 双向 1 KiB shared→2 MiB fallback→257 B sticky→fallback ACK 普通 50 轮、ASan helper 10 轮通过。
 - 时钟注意：本机当前比远端快约 2 分 20 秒；同步时不得保留本机文件时间戳，否则 Ninja 会反复重新生成。标准命令见 `PROJECT_WORKFLOW.md`。
 - Linux 运行基线：本机用 Go 1.25.10 交叉编译固定提交的 amd64 测试二进制，rsync 至远端后完整测试 `PASS`、退出码 0；覆盖 v2、v3/memfd、队列、Stream/Session 和热重启路径。
 - CI：`.github/workflows/tests.yaml` 在 Ubuntu 运行单测/benchmark，并在自托管 Linux 上覆盖 Go 1.21–1.25；`.github/workflows/pre_check.yaml` 运行许可证、拼写和 golangci-lint。

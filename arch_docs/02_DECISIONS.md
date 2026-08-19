@@ -242,6 +242,15 @@
 - ACK：server 先发送 `AckReadyRecvFD` 再接收 descriptors，并仅在 queue、buffer、pool 全部映射成功后发送 `AckShareMemory`。
 - 证据：`third_party/shmipc-go/block_io.go`、`protocol_initializer.go`；`src/transport/control_socket.*`、`src/core/v3_handshake.*`、`tests/control_socket_test.cpp`、`tests/v3_handshake_test.cpp` 与 `TestV3HandshakeInterop`。本机 Debug/ASan+UBSan/TSan，远端 GCC 8.5 Debug/ASan、普通双向 100 轮和 ASan 20 轮通过。
 
+### D-029：数据 fallback 只由 buffer 耗尽触发，并按 Stream 永久保持
+
+- 状态：已验证；S-0403a 本机/远端与固定 Go 双向 oracle 通过，待云端门禁
+- 触发：`BufferWriter::write_bytes` 返回 `no_buffer` 时回收已取得的 partial chain，将原 payload 编成 FallbackData。其他 buffer 错误仍保留细分错误，queue full 继续 10×10ms 重试并返回 queue/timeout，不触发 fallback。
+- sticky：per-Stream `send_mutex` 串行化判定和写入；一旦本地 buffer 耗尽，后续发送不再尝试共享内存。接收方只有在应用消费 fallback 消息时才同步标记，复现固定 Go `BufferReader` 的切换时点。
+- 顺序：先前 shared message 的 Polling 和后续 FallbackData 共用有序控制连接，因此 peer callback 先 drain queue 再投递 fallback。每条 Stream 的消息队列保留消息边界。
+- close 边界：fallback frame 在控制连接、close element 在共享队列，两者没有天然跨通道 barrier；运行时压力确认立即 close 可被较早 Polling 批量观察并越过仍在 socket 中的 fallback。数据保序 oracle 使用反向 fallback ACK 确认消费后再关闭，关闭兼容由独立矩阵验证；协议级 end-stream/barrier 留待后续切片明确。
+- 证据：固定 Go `stream.go:205-271`、`protocol_manager.go:153-176`；`src/core/v2_multiplexed_session.cpp`、`tests/v2_multiplexed_session_test.cpp` 与 `TestV2FallbackInterop`。远端普通双向 50 轮、ASan helper 10 轮通过，临时 runtime-debugger 插桩已清理。
+
 ## 设计风险与待验证事实
 
 ### R-001：共享内存使用本机字节序和手工 offset
@@ -324,3 +333,5 @@
 - 2026-08-19：`S-0401` 新增独立 v3 版本协商状态机，固化 client 可降级、server 仅接受 v3 首帧的非对称语义；本机三套 sanitizer、固定 Go oracle 17/17、远端 GCC 8.5 Debug/ASan 16/16及双向互操作 20 轮通过，等待云端门禁。影响文档：索引、本文件、core/oracle 目录、版本协商文件、项目计划和回归指南。
 - 2026-08-19：提交 `807b4fa` 的 GitHub Actions run `32207020590` 七项作业全部成功，`S-0401` 云端门禁关闭。
 - 2026-08-19：`S-0402` 新增 Linux SCM_RIGHTS RAII descriptor 传递与完整 v3 memfd 资源握手，固定单 NUL payload、`[buffer, queue]` 线序、严格两个 FD 和 ACK 时序；本机三套配置、远端 Debug/ASan、固定 Go `newSession` 双向普通 100 轮和 ASan 20 轮通过，等待云端门禁。影响文档：索引、概要、本文件、core/transport/oracle 目录、v3/control socket 文件、移植计划和回归指南。
+- 2026-08-19：提交 `568817c` 的 GitHub Actions run `32209295664` 七项作业全部成功，`S-0402` 云端门禁关闭。
+- 2026-08-19：`S-0403a` 新增 buffer 耗尽触发的 per-Stream sticky FallbackData，接收消费后同步切换，queue full 保持原重试语义。跨语言压力确认 fallback/control 与 queue close 没有天然 barrier，oracle 改用反向 fallback ACK 分隔数据消费和关闭；普通双向 50 轮、ASan helper 10 轮通过，等待完整门禁。影响文档：索引、概要、本文件、core/oracle 目录、多路 Session 文件、关系图、计划和回归指南。

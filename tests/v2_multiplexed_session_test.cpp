@@ -200,6 +200,76 @@ bool recycle_element(shmipc::core::V2SharedMemory &memory,
                       shmipc::shm::BufferPoolError::none;
 }
 
+bool test_buffer_exhaustion_sticky_fallback() {
+  auto sockets = make_socket_pair();
+  auto dispatcher = shmipc::transport::start_epoll_dispatcher();
+  TestDirectory directory;
+  if (!dispatcher) {
+    return dispatcher.error == shmipc::transport::TransportError::unsupported;
+  }
+  if (!sockets || !directory.create()) {
+    return false;
+  }
+  const shmipc::core::V2ClientConfig config{directory.path + "/queue",
+                                            directory.path + "/buffer",
+                                            16U,
+                                            64U * 1024U,
+                                            {{4096U, 100U}}};
+
+  std::promise<shmipc::core::V2MultiplexedServerSessionResult> promise;
+  auto future = promise.get_future();
+  std::thread server_thread([&] {
+    promise.set_value(shmipc::core::start_v2_multiplexed_server_session(
+        std::move(sockets.value.server), dispatcher.value));
+  });
+  auto client = shmipc::core::start_v2_multiplexed_client_session(
+      std::move(sockets.value.client), config, dispatcher.value);
+  auto server = future.get();
+  server_thread.join();
+  if (!client || !server) {
+    return false;
+  }
+
+  auto opened = client.value.open_stream();
+  if (!opened) {
+    return false;
+  }
+  auto client_stream = std::move(opened.value);
+  const std::vector<std::uint8_t> shared(1024U, 0x31U);
+  const std::vector<std::uint8_t> exhausted(128U * 1024U, 0x52U);
+  const std::vector<std::uint8_t> sticky(257U, 0x73U);
+  if (!client_stream.send(shared) || client_stream.is_fallback() ||
+      !client_stream.send(exhausted) || !client_stream.is_fallback() ||
+      !client_stream.send(sticky) || !client_stream.is_fallback()) {
+    return false;
+  }
+
+  auto accepted = server.value.accept_stream(5s);
+  if (!accepted) {
+    return false;
+  }
+  auto server_stream = std::move(accepted.value);
+  const auto first = server_stream.receive(5s);
+  if (!first || first.value != shared || server_stream.is_fallback()) {
+    return false;
+  }
+  const auto second = server_stream.receive(5s);
+  if (!second || second.value != exhausted || !server_stream.is_fallback()) {
+    return false;
+  }
+  const auto third = server_stream.receive(5s);
+  if (!third || third.value != sticky || !server_stream.is_fallback()) {
+    return false;
+  }
+
+  static_cast<void>(client_stream.close());
+  static_cast<void>(server_stream.close());
+  static_cast<void>(client.value.close());
+  static_cast<void>(server.value.close());
+  static_cast<void>(dispatcher.value.stop());
+  return true;
+}
+
 bool test_queue_full_retry_and_close_fallback() {
   auto sockets = make_socket_pair();
   auto dispatcher = shmipc::transport::start_epoll_dispatcher();
@@ -243,7 +313,8 @@ bool test_queue_full_retry_and_close_fallback() {
   stream.set_write_deadline(shmipc::core::V2Stream::Clock::now());
   const auto timeout_start = shmipc::core::V2Stream::Clock::now();
   if (stream.send(payload).error != shmipc::core::V2SessionError::timeout ||
-      shmipc::core::V2Stream::Clock::now() - timeout_start > 100ms) {
+      shmipc::core::V2Stream::Clock::now() - timeout_start > 100ms ||
+      stream.is_fallback()) {
     return false;
   }
   stream.set_write_deadline(std::nullopt);
@@ -389,6 +460,10 @@ int main() {
   }
   if (!test_queue_full_retry_and_close_fallback()) {
     std::cerr << "v2 multiplexed queue-full/deadline test failed\n";
+    return 1;
+  }
+  if (!test_buffer_exhaustion_sticky_fallback()) {
+    std::cerr << "v2 multiplexed sticky fallback test failed\n";
     return 1;
   }
   if (!test_session_failure_propagation()) {

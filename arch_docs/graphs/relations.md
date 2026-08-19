@@ -185,6 +185,28 @@ sequenceDiagram
   Peer-->>App: wake reader / OnData
 ```
 
+## Sticky fallback 发送链路
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant App as Application
+  participant Stream as C++ Stream
+  participant BM as BufferPool
+  participant Ctrl as control connection
+  participant Peer as peer Session
+
+  App->>Stream: send(payload)
+  Stream->>BM: allocate chain
+  BM-->>Stream: no_buffer
+  Stream->>Stream: fallback = true (sticky)
+  Stream->>Ctrl: FallbackData(stream, state, payload)
+  Ctrl->>Peer: ordered control bytes
+  Peer-->>App: enqueue fallback message
+  App->>Stream: send(next payload)
+  Stream->>Ctrl: FallbackData without retrying BM
+```
+
 ## v3 memfd 握手
 
 ```mermaid

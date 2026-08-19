@@ -622,6 +622,154 @@ func TestV2MultiplexedSessionInterop(t *testing.T) {
 	})
 }
 
+func TestV2FallbackInterop(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("full shmipc Session initialization requires Linux")
+	}
+	helper := os.Getenv("SHMIPC_CPP_V2_MULTIPLEXED_SESSION_HELPER")
+	if helper == "" {
+		t.Fatal("SHMIPC_CPP_V2_MULTIPLEXED_SESSION_HELPER is not set")
+	}
+	messages := [][]byte{
+		bytes.Repeat([]byte{0x31}, 1024),
+		bytes.Repeat([]byte{0x52}, 2*1024*1024),
+		bytes.Repeat([]byte{0x73}, 257),
+	}
+
+	t.Run("GoClientToCppServer", func(t *testing.T) {
+		directory := t.TempDir()
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer listener.Close()
+		port := listener.Addr().(*net.TCPAddr).Port
+		command := exec.Command(helper, "fallback-server", "127.0.0.1", strconv.Itoa(port))
+		var helperOutput bytes.Buffer
+		command.Stdout = &helperOutput
+		command.Stderr = &helperOutput
+		if err := command.Start(); err != nil {
+			t.Fatal(err)
+		}
+		connection, err := listener.Accept()
+		if err != nil {
+			command.Process.Kill()
+			t.Fatal(err)
+		}
+		config := DefaultConfig()
+		config.LogOutput = io.Discard
+		config.InitializeTimeout = 5 * time.Second
+		config.QueueCap = 16
+		config.ShareMemoryBufferCap = 1 << 20
+		config.QueuePath = filepath.Join(directory, "go-fallback-queue")
+		config.ShareMemoryPathPrefix = filepath.Join(directory, "go-fallback")
+		config.BufferSliceSizes = []*SizePercentPair{{Size: 4096, Percent: 100}}
+		session, sessionErr := newSession(config, connection, true)
+		var stream *Stream
+		if sessionErr == nil {
+			stream, sessionErr = session.OpenStream()
+		}
+		if sessionErr == nil {
+			for index, message := range messages {
+				if _, err := stream.Write(message); err != nil {
+					sessionErr = err
+					break
+				}
+				if stream.inFallbackState != (index != 0) {
+					sessionErr = fmt.Errorf("Go fallback state at %d = %t", index, stream.inFallbackState)
+					break
+				}
+			}
+		}
+		if sessionErr == nil {
+			acknowledgement := make([]byte, 1)
+			if _, err := io.ReadFull(stream, acknowledgement); err != nil {
+				sessionErr = err
+			} else if acknowledgement[0] != 0x7e {
+				sessionErr = fmt.Errorf("C++ fallback acknowledgement = %x", acknowledgement)
+			}
+		}
+		if sessionErr == nil {
+			sessionErr = stream.Close()
+		}
+		if sessionErr != nil {
+			connection.Close()
+			command.Process.Kill()
+		}
+		helperErr := command.Wait()
+		if session != nil {
+			session.Close()
+		}
+		if sessionErr != nil || helperErr != nil {
+			t.Fatalf("Go client=%v C++ server=%v helper output=%s", sessionErr, helperErr, helperOutput.String())
+		}
+	})
+
+	t.Run("CppClientToGoServer", func(t *testing.T) {
+		directory := t.TempDir()
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer listener.Close()
+		port := listener.Addr().(*net.TCPAddr).Port
+		command := exec.Command(helper, "fallback-client", "127.0.0.1", strconv.Itoa(port), filepath.Join(directory, "cpp-fallback-queue"), filepath.Join(directory, "cpp-fallback-buffer"))
+		var helperOutput bytes.Buffer
+		command.Stdout = &helperOutput
+		command.Stderr = &helperOutput
+		if err := command.Start(); err != nil {
+			t.Fatal(err)
+		}
+		connection, err := listener.Accept()
+		if err != nil {
+			command.Process.Kill()
+			t.Fatal(err)
+		}
+		config := DefaultConfig()
+		config.LogOutput = io.Discard
+		config.InitializeTimeout = 5 * time.Second
+		session, sessionErr := newSession(config, connection, false)
+		var stream *Stream
+		if sessionErr == nil {
+			stream, sessionErr = session.AcceptStream()
+		}
+		if sessionErr == nil {
+			for index, expected := range messages {
+				actual := make([]byte, len(expected))
+				if _, err := io.ReadFull(stream, actual); err != nil {
+					sessionErr = err
+					break
+				}
+				if !bytes.Equal(actual, expected) {
+					sessionErr = fmt.Errorf("C++ fallback payload mismatch at %d", index)
+					break
+				}
+				if stream.inFallbackState != (index != 0) {
+					sessionErr = fmt.Errorf("Go receive fallback state at %d = %t", index, stream.inFallbackState)
+					break
+				}
+			}
+		}
+		if sessionErr == nil {
+			_, sessionErr = stream.Write([]byte{0x7e})
+		}
+		if sessionErr == nil {
+			sessionErr = stream.Close()
+		}
+		if sessionErr != nil {
+			connection.Close()
+			command.Process.Kill()
+		}
+		helperErr := command.Wait()
+		if session != nil {
+			session.Close()
+		}
+		if sessionErr != nil || helperErr != nil {
+			t.Fatalf("C++ client=%v Go server=%v helper output=%s", helperErr, sessionErr, helperOutput.String())
+		}
+	})
+}
+
 func TestBufferPoolInterop(t *testing.T) {
 	helper := os.Getenv("SHMIPC_CPP_BUFFER_POOL_HELPER")
 	if helper == "" {
