@@ -6,7 +6,7 @@
 |---|---|
 | 项目类型 | Go 到 C++ 的跨语言、跨运行时重实现 |
 | 参考实现 | `third_party/shmipc-go` commit `55c241eea321071278d1ee7f7c46292d23e50a5b` |
-| 当前阶段 | M2、M3 已完成；M4 `S-0401..0402` 已关闭，`S-0403a` fallback 已完成本机/远端验证 |
+| 当前阶段 | M2、M3 已完成；M4 `S-0401..0403a` 已关闭，`S-0403b` v3 Session 数据面已完成本机/远端验证 |
 | 已确认目标 | 在 Linux 上提供现代 C++ 共享内存 IPC 库，并与固定 Go 实现双向互通；Go 仅用于开发验收 |
 | 流程依据 | 用户提供的《软件项目端到端标准工作流程》 |
 | 架构依据 | [上游架构概要](../arch_docs/01_OVERVIEW.md) 与 [决策/风险](../arch_docs/02_DECISIONS.md) |
@@ -198,8 +198,8 @@ tools/
 
 - `S-0401`（已验证）：独立版本协商状态机；client 支持 v2 降级，server 严格要求 v3 Exchange 首帧；提交 `807b4fa` 的 run `32207020590` 七项门禁通过。
 - `S-0402`（已验证）：SCM_RIGHTS 两个 FD、ACK 时序、完整 memfd mapping、ownership 与异常回滚；提交 `568817c` 的 run `32209295664` 七项门禁通过。
-- `S-0403a`（已完成本机/远端验证，待云端门禁）：共享 buffer 耗尽触发数据 fallback、接收处理与 per-Stream sticky ordering；queue full 明确不触发 fallback。
-- `S-0403b`：抽取版本无关多路数据面并接入 `V3SharedMemory`，完成真实 v3 Session 的 shared/fallback/close 双向互通。
+- `S-0403a`（已完成；提交 `c8d6ade`、run `32212075730`）：共享 buffer 耗尽触发数据 fallback、接收处理与 per-Stream sticky ordering；queue full 明确不触发 fallback。
+- `S-0403b`（已完成本机/远端验证，待云端门禁）：抽取版本无关多路数据面并接入 `V3SharedMemory`，完成真实 v3 Session 的 shared/fallback/close 双向互通。
 - `S-0404`：熔断/恢复期间拒绝新 Stream 的兼容行为。
 
 退出条件：`COMP-002`、`STREAM-003` 完成；正常/异常握手和 fallback 双向互通。
@@ -320,10 +320,11 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-M4-001`：v3 版本协商使用 header-only `ExchangeProtoVersion`；C++ client 对 peer 2/3/>3 分别选择 2/3/3，C++ server 只接受固定 Go 可分派到 v3 initializer 的 version 3 首帧。错误 length/type/magic、低版本、EOF 均有自动测试；本机 Debug/ASan+UBSan/TSan 16/16、固定 Go oracle 17/17，远端 GCC 8.5 Debug/ASan 16/16、双向互操作连续 20 轮通过。
 - `E-M4-002`：v3 client 创建 buffer/queue 两个 memfd，按 metadata→`AckReadyRecvFD`→单次 SCM_RIGHTS `[buffer, queue]`→`AckShareMemory` 完成资源交换；单 NUL payload 与固定 Go stream socket 行为一致。C++ 覆盖错误 ACK、1/3 个 FD、截断 metadata、RAII 回滚及 `/proc/self/fd` 无增长；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 17/17，固定 Go `newSession` 两方向普通 100 轮、ASan helper 20 轮通过。
 - `E-M4-003`：多路 Stream 在 BufferWriter `no_buffer` 时发送 FallbackData 并永久保持 socket 路径；接收应用消费 fallback 后同步切换，queue full timeout 保持非 fallback。C++ 单元验证 1 KiB shared→128 KiB fallback→257 B sticky；固定 Go 双向以 1 MiB pool、2 MiB fallback 和反向 fallback ACK 验证，远端普通 50 轮、ASan helper 10 轮通过。
+- `E-M4-004`：多路 Session state 以 `V2SharedMemory/V3SharedMemory` variant 复用 pool/queue 数据面并保存运行期协议版本；v3 client/server 启动入口接入完整 memfd handshake，所有 Polling/FallbackData/StreamClose 使用 version 3。C++ 与固定 Go 两方向均完成 shared→fallback→sticky→ACK→close；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 18/18，普通互操作 50 轮、ASan helper 10 轮通过。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. 完成 `S-0403a` 全量门禁后进入 `S-0403b`，抽取版本无关 Session 数据面并接入 v3 memfd 资源。
-2. 保留 live-pool mapping、两个方向单 Stream 与 300 轮压力作为持续回归。
+1. 提交并由云端七项门禁验证 `S-0403b`，随后进入 `S-0404` 熔断/恢复期间拒绝新 Stream 的兼容行为。
+2. 保留 live-pool mapping、v2/v3 双向 Session oracle 与既有压力矩阵作为持续回归。

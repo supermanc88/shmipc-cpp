@@ -130,6 +130,16 @@ target_include_directories(shmipc_v2_multiplexed_session_test PRIVATE ${PROJECT_
 shmipc_apply_project_options(shmipc_v2_multiplexed_session_test)
 add_test(NAME shmipc.v2_multiplexed_session COMMAND shmipc_v2_multiplexed_session_test)
 
+add_executable(shmipc_v3_multiplexed_session_test
+               v3_multiplexed_session_test.cpp)
+target_link_libraries(shmipc_v3_multiplexed_session_test
+                      PRIVATE shmipc::shmipc Threads::Threads)
+target_include_directories(shmipc_v3_multiplexed_session_test
+                           PRIVATE ${PROJECT_SOURCE_DIR}/src)
+shmipc_apply_project_options(shmipc_v3_multiplexed_session_test)
+add_test(NAME shmipc.v3_multiplexed_session
+         COMMAND shmipc_v3_multiplexed_session_test)
+
 add_executable(shmipc_buffer_pool_interop_helper buffer_pool_interop_helper.cpp)
 target_link_libraries(shmipc_buffer_pool_interop_helper PRIVATE shmipc::shmipc)
 target_include_directories(shmipc_buffer_pool_interop_helper PRIVATE ${PROJECT_SOURCE_DIR}/src)
@@ -178,6 +188,14 @@ target_link_libraries(shmipc_v2_multiplexed_session_interop_helper PRIVATE shmip
 target_include_directories(shmipc_v2_multiplexed_session_interop_helper PRIVATE ${PROJECT_SOURCE_DIR}/src)
 shmipc_apply_project_options(shmipc_v2_multiplexed_session_interop_helper)
 
+add_executable(shmipc_v3_multiplexed_session_interop_helper
+               v3_multiplexed_session_interop_helper.cpp)
+target_link_libraries(shmipc_v3_multiplexed_session_interop_helper
+                      PRIVATE shmipc::shmipc Threads::Threads)
+target_include_directories(shmipc_v3_multiplexed_session_interop_helper
+                           PRIVATE ${PROJECT_SOURCE_DIR}/src)
+shmipc_apply_project_options(shmipc_v3_multiplexed_session_interop_helper)
+
 if(SHMIPC_ENABLE_GO_ORACLE_TESTS)
     find_program(SHMIPC_GO_EXECUTABLE go)
     if(NOT SHMIPC_GO_EXECUTABLE)
@@ -195,6 +213,7 @@ if(SHMIPC_ENABLE_GO_ORACLE_TESTS)
             SHMIPC_CPP_V2_CLIENT_SESSION_HELPER=$<TARGET_FILE:shmipc_v2_client_session_interop_helper>
             SHMIPC_CPP_V2_SERVER_SESSION_HELPER=$<TARGET_FILE:shmipc_v2_server_session_interop_helper>
             SHMIPC_CPP_V2_MULTIPLEXED_SESSION_HELPER=$<TARGET_FILE:shmipc_v2_multiplexed_session_interop_helper>
+            SHMIPC_CPP_V3_MULTIPLEXED_SESSION_HELPER=$<TARGET_FILE:shmipc_v3_multiplexed_session_interop_helper>
             ${SHMIPC_GO_EXECUTABLE} run
             ${PROJECT_SOURCE_DIR}/tools/go_oracle/run_control_header_oracle.go
     )

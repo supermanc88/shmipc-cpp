@@ -2,7 +2,7 @@
 
 ## Summary
 
-组合 protocol、transport 与 shm 子系统形成可执行的会话初始化和数据路径。当前实现 v2 文件路径握手、完整 v3 memfd 资源握手、client/server 单 Stream 基线，以及带 deadline、queue-full retry 和错误扇出的 client-originated 多 Stream Session；v3 Session 数据接入与数据 fallback 仍由后续切片补充。
+组合 protocol、transport 与 shm 子系统形成可执行的会话初始化和数据路径。当前实现 v2 文件路径握手、完整 v3 memfd 资源握手、client/server 单 Stream 基线，以及由 v2/v3 共用、带 deadline、sticky fallback、queue-full retry 和错误扇出的 client-originated 多 Stream Session。
 
 ## Directory Contents
 
@@ -17,8 +17,8 @@
 | `v2_client_session.hpp` | 内部头文件 | ✅ | 单 client Session/Stream API、状态与错误模型 |
 | `v2_client_session.cpp` | C++ 实现 | ✅ | epoll callback、queue/buffer 数据面、Polling 与关闭 |
 | `v2_server_session.hpp` | 内部头文件 | ✅ | server 动态绑定首个远端 Stream、收发与关闭 API |
-| `v2_multiplexed_session.hpp` | 内部头文件 | ✅ | 多路 client/server Session 与独立 Stream 句柄 |
-| `v2_multiplexed_session.cpp` | C++ 实现 | ✅ | 连接级路由/accept、per-Stream 消息/关闭/deadline 与 queue-full retry |
+| `v2_multiplexed_session.hpp` | 内部头文件 | ✅ | v2/v3 多路 client/server Session 与独立 Stream 句柄 |
+| `v2_multiplexed_session.cpp` | C++ 实现 | ✅ | 资源 variant、版本化控制帧、路由/accept、sticky fallback 与生命周期 |
 
 ## Invariants
 
@@ -48,6 +48,7 @@
 - `tests/v2_server_session_test.cpp` 与 Go oracle 验证 Go client→C++ server 的三消息双向链、ID 2 动态绑定、批量 Polling 和两个方向 close；远端 Debug/ASan 14/14、普通 300/300、ASan 50/50 及提交 `0347f34` 的 run `32158446306` 七项门禁通过。
 - `tests/v2_multiplexed_session_test.cpp` 与双向 Go oracle 验证 ID 2/3/4、并发首包、server Accept、独立收发、deadline、queue-full retry/close fallback、错误扇出与无 ACK close；本地三套 sanitizer、远端 Debug/ASan、普通互操作 100 轮及 ASan 20 轮通过。
 - `TestV2FallbackInterop` 双向验证 1 KiB shared、2 MiB fallback、257 B sticky 和反向 fallback ACK；远端普通 50 轮、ASan helper 10 轮通过。
+- `tests/v3_multiplexed_session_test.cpp` 与 `TestV3MultiplexedSessionInterop` 验证完整 v3 memfd→epoll→shared/fallback/sticky/close 链路；本机三套与远端 Debug/ASan 18/18，固定 Go 双向普通 50 轮、ASan helper 10 轮通过。
 - 提交 `78913e6` 的 GitHub Actions run `32204938990` 七项门禁全部成功，Go protocol oracle CTest 为 16/16；`S-0305a/b` 与 M3 正式关闭。
 
 ## Links

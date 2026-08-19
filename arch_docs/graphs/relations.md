@@ -23,6 +23,7 @@ graph TD
   transport["src/transport/control_socket"]
   dispatcher["src/transport/epoll_dispatcher"]
   handshake["src/core/v2_handshake"]
+  v3_handshake["src/core/v3_handshake"]
   client_session["src/core/v2_client_session"]
   server_session["src/core/v2_server_session"]
   multiplexed_session["src/core/v2_multiplexed_session"]
@@ -67,6 +68,9 @@ graph TD
   handshake -- creates/maps --> mapping
   handshake -- initializes/maps --> pool
   handshake -- initializes/maps --> shared_queue
+  v3_handshake -- passes/maps memfd --> mapping
+  v3_handshake -- initializes/maps --> pool
+  v3_handshake -- initializes/maps --> shared_queue
   client_session -- starts with --> handshake
   client_session -- registers callback --> dispatcher
   client_session -- publishes/adopts --> buffer_io
@@ -78,6 +82,7 @@ graph TD
   server_session -- publishes/adopts --> buffer_io
   server_session -- puts/pops --> shared_queue
   multiplexed_session -- starts with --> handshake
+  multiplexed_session -- starts with --> v3_handshake
   multiplexed_session -- routes by Stream ID --> buffer_io
   multiplexed_session -- puts/pops --> shared_queue
   multiplexed_session -- registers callback --> dispatcher

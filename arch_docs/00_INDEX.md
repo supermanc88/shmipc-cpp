@@ -23,7 +23,7 @@
 - [files/src__core__v2_handshake.hpp.md](files/src__core__v2_handshake.hpp.md)：v2 握手状态、资源 ownership 与错误模型
 - [files/src__core__v2_client_session.hpp.md](files/src__core__v2_client_session.hpp.md)：v2 client 单 Session/Stream 数据路径
 - [files/src__core__v2_server_session.hpp.md](files/src__core__v2_server_session.hpp.md)：v2 server 动态绑定单 Stream 数据路径
-- [files/src__core__v2_multiplexed_session.hpp.md](files/src__core__v2_multiplexed_session.hpp.md)：v2 多路 Session 路由与独立 Stream 状态
+- [files/src__core__v2_multiplexed_session.hpp.md](files/src__core__v2_multiplexed_session.hpp.md)：v2/v3 共用多路 Session 路由与独立 Stream 状态
 - [files/src__core__protocol_version_negotiation.hpp.md](files/src__core__protocol_version_negotiation.hpp.md)：v3 版本协商角色状态、降级结果与错误模型
 - [files/src__core__v3_handshake.hpp.md](files/src__core__v3_handshake.hpp.md)：完整 v3 memfd/SCM_RIGHTS 握手与共享资源 ownership
 - [dirs/third_party__shmipc-go.md](dirs/third_party__shmipc-go.md)：Go 参考实现文件映射
@@ -44,7 +44,7 @@
 | `docs/` | [移植计划](../docs/SHMIPC_CPP_PORTING_PLAN.md)、[项目工作流](../docs/PROJECT_WORKFLOW.md) | ✅ | #plan #workflow | 需求、里程碑、门禁与远程验证流程 |
 | `include/shmipc/` | [dirs/root.md](dirs/root.md) | ✅ | #public-api | 公共 C++ 头文件入口 |
 | `src/` | [dirs/root.md](dirs/root.md) | ✅ | #implementation | C++ 库实现入口 |
-| `src/core/` | [dirs/src__core.md](dirs/src__core.md) | ✅ | #handshake #v2 #v3 #interop | v2 文件握手及完整 v3 memfd 资源握手已完成双向验证 |
+| `src/core/` | [dirs/src__core.md](dirs/src__core.md) | ✅ | #handshake #v2 #v3 #interop | v2 文件与 v3 memfd 握手均已接入共用多路 Session 数据面并完成双向验证 |
 | `src/protocol/` | [dirs/src__protocol.md](dirs/src__protocol.md) | ✅ | #protocol #codec #safety | header、metadata 与 fallback 生产编解码 |
 | `src/shm/` | [dirs/src__shm.md](dirs/src__shm.md) | ✅ | #shared-memory #layout #mmap #zero-copy | 显式布局、mapping、pool、queue 与 Buffer IO |
 | `src/transport/` | [dirs/src__transport.md](dirs/src__transport.md) | ✅ | #transport #socket #epoll | Unix/TCP、SCM_RIGHTS 与 Linux epoll 已完成本机/远端验证 |
@@ -92,6 +92,8 @@
 | `src/core/v2_client_session.hpp` | ✅ | #session #stream #errors | 单 client Session/Stream API 与错误模型 |
 | `src/core/v2_client_session.cpp` | ✅ | #epoll #queue #buffer | Polling、消息收发、timeout 与 close 状态机 |
 | `src/core/v2_server_session.hpp` | ✅ | #server #session #stream | 首个远端 Stream 动态绑定与服务端 API |
+| `src/core/v2_multiplexed_session.hpp` | ✅ | #session #stream #v2 #v3 | 版本无关多路数据面、v2/v3 启动入口与兼容别名 |
+| `src/core/v2_multiplexed_session.cpp` | ✅ | #session #routing #fallback | V2/V3SharedMemory variant、版本化控制帧与 Stream 路由实现 |
 | `tests/version_test.cpp` | ✅ | #test | 无第三方依赖的首个 library test |
 | `tests/control_header_golden_test.cpp` | ✅ | #test #protocol #golden | C++ 侧消费 control-header fixture |
 | `tests/protocol_codec_test.cpp` | ✅ | #test #protocol #negative | metadata/fallback round-trip 与异常输入测试 |
@@ -110,6 +112,8 @@
 | `tests/protocol_version_negotiation_interop_helper.cpp` | ✅ | #test #interop #v3 | 固定 Go oracle 调用的双向版本协商 helper |
 | `tests/v3_handshake_test.cpp` | ✅ | #test #handshake #v3 | 完整资源握手、异常回滚与 FD 泄漏检查 |
 | `tests/v3_handshake_interop_helper.cpp` | ✅ | #test #interop #v3 | 固定 Go newSession 调用的双向完整握手 helper |
+| `tests/v3_multiplexed_session_test.cpp` | ✅ | #test #session #v3 | memfd Session shared/fallback/sticky/close 数据面测试 |
+| `tests/v3_multiplexed_session_interop_helper.cpp` | ✅ | #test #interop #v3 | 固定 Go oracle 调用的双向 v3 Session helper |
 | `tests/v2_client_session_test.cpp` | ✅ | #test #session #roundtrip | 单 Stream 跨 slice 双向消息、timeout 与 close |
 | `tests/v2_client_session_interop_helper.cpp` | ✅ | #test #interop #stream | C++ client→真实 Go server helper |
 | `tests/buffer_pool_interop_helper.cpp` | ✅ | #test #interop #chain | Go oracle 调用的 C++ 双向 chain helper |
@@ -157,6 +161,7 @@
 | C++ v2 单 Stream 双角色 | `src/core/v2_{client,server}_session.*`, `tests/v2_*_session*` | `COMP-001`, `STREAM-001..002` |
 | C++ v2 client-originated 多 Stream | `src/core/v2_multiplexed_session.*`, `tests/v2_multiplexed_session*` | `COMP-001`, `STREAM-001..002` |
 | 控制通道 sticky fallback | `src/core/v2_multiplexed_session.*`, `stream.go`, `protocol_manager.go` | `STREAM-003` |
+| C++ v3 多路 Session 数据面 | `src/core/v2_multiplexed_session.*`, `tests/v3_multiplexed_session*`, `tools/go_oracle/` | `COMP-002`, `STREAM-001..004` |
 | 服务监听和热重启 | `listener.go`, `session_manager.go` | `API-002`, `OPS-001` |
 | 性能与稳定性指标 | `stats.go`, `bench_test.go` | `NFR-003`, `OBS-001` |
 
@@ -166,9 +171,10 @@
 - 已完成：`S-0305a/b` 多 Stream、deadline、queue-full retry/close fallback、路由回收和 Session 错误扇出已通过提交 `78913e6` 的云端七项门禁，M3 正式关闭。
 - 已完成：`S-0401` 的提交 `807b4fa` 经 GitHub Actions run `32207020590` 七项门禁通过。
 - 已完成：`S-0402` 的提交 `568817c` 经 GitHub Actions run `32209295664` 七项门禁通过。
-- 进行中：`S-0403a` 多路 Session 数据 fallback 与 per-Stream sticky ordering 已通过本机三套专项、远端 Debug/ASan、固定 Go 双向普通 50 轮及 ASan 10 轮；待完整门禁与提交。
+- 已完成：`S-0403a` 数据 fallback 与 sticky ordering 已由提交 `c8d6ade` 及 GitHub Actions run `32212075730` 七项门禁关闭。
+- 进行中：`S-0403b` 已把共用多路数据面接入 v3 memfd 资源；本机三套 18/18、远端 Debug/ASan 18/18、固定 Go 双向普通 50 轮及 ASan 10 轮通过，待提交与云端门禁。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
-- 待验证：将已验证的 fallback 数据面接入 v3 资源、fallback/close 跨通道边界和更完整的异常注入矩阵。v3 握手、数据 sticky fallback、版本协商及多 Stream 生命周期已完成本机和远端验证。
+- 待验证：fallback/close 跨通道协议级 barrier 和更完整的异常注入矩阵。v3 握手、多路数据面、sticky fallback 与生命周期已完成本机、远端和固定 Go 双向验证。
 
 ## 状态标记
 

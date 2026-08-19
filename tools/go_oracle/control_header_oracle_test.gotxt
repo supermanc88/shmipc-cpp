@@ -178,6 +178,159 @@ func TestV3HandshakeInterop(t *testing.T) {
 	})
 }
 
+func TestV3MultiplexedSessionInterop(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("memfd Session data plane requires Linux")
+	}
+	helper := os.Getenv("SHMIPC_CPP_V3_MULTIPLEXED_SESSION_HELPER")
+	if helper == "" {
+		t.Fatal("SHMIPC_CPP_V3_MULTIPLEXED_SESSION_HELPER is not set")
+	}
+	messages := [][]byte{
+		bytes.Repeat([]byte{0x31}, 1024),
+		bytes.Repeat([]byte{0x52}, 2*1024*1024),
+		bytes.Repeat([]byte{0x73}, 257),
+	}
+	config := func(queueName, bufferName string) *Config {
+		result := DefaultConfig()
+		result.LogOutput = io.Discard
+		result.InitializeTimeout = 5 * time.Second
+		result.MemMapType = MemMapTypeMemFd
+		result.QueueCap = 16
+		result.ShareMemoryBufferCap = 1 << 20
+		result.QueuePath = queueName
+		result.ShareMemoryPathPrefix = strings.TrimSuffix(bufferName, bufferPathSuffix)
+		result.BufferSliceSizes = []*SizePercentPair{{Size: 4096, Percent: 100}}
+		return result
+	}
+
+	t.Run("GoClientToCppServer", func(t *testing.T) {
+		directory := t.TempDir()
+		socketPath := filepath.Join(directory, "control.sock")
+		queueName := filepath.Join(directory, "go-queue")
+		bufferName := filepath.Join(directory, "go") + bufferPathSuffix
+		listener, err := net.Listen("unix", socketPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer listener.Close()
+		command := exec.Command(helper, "server", socketPath)
+		var helperOutput bytes.Buffer
+		command.Stdout = &helperOutput
+		command.Stderr = &helperOutput
+		if err := command.Start(); err != nil {
+			t.Fatal(err)
+		}
+		connection, err := listener.Accept()
+		if err != nil {
+			command.Process.Kill()
+			t.Fatal(err)
+		}
+		session, sessionErr := newSession(config(queueName, bufferName), connection, true)
+		var stream *Stream
+		if sessionErr == nil {
+			stream, sessionErr = session.OpenStream()
+		}
+		if sessionErr == nil {
+			for index, message := range messages {
+				if _, err := stream.Write(message); err != nil {
+					sessionErr = err
+					break
+				}
+				if stream.inFallbackState != (index != 0) {
+					sessionErr = fmt.Errorf("Go v3 fallback state at %d = %t", index, stream.inFallbackState)
+					break
+				}
+			}
+		}
+		if sessionErr == nil {
+			acknowledgement := make([]byte, 1)
+			if _, err := io.ReadFull(stream, acknowledgement); err != nil {
+				sessionErr = err
+			} else if acknowledgement[0] != 0x7e {
+				sessionErr = fmt.Errorf("C++ v3 fallback acknowledgement = %x", acknowledgement)
+			}
+		}
+		if sessionErr == nil {
+			sessionErr = stream.Close()
+		}
+		if sessionErr != nil {
+			connection.Close()
+			command.Process.Kill()
+		}
+		helperErr := command.Wait()
+		if session != nil {
+			session.Close()
+		}
+		if sessionErr != nil || helperErr != nil {
+			t.Fatalf("Go v3 client=%v C++ v3 server=%v helper output=%s", sessionErr, helperErr, helperOutput.String())
+		}
+	})
+
+	t.Run("CppClientToGoServer", func(t *testing.T) {
+		directory := t.TempDir()
+		socketPath := filepath.Join(directory, "control.sock")
+		queueName := filepath.Join(directory, "cpp-queue")
+		bufferName := filepath.Join(directory, "cpp") + bufferPathSuffix
+		listener, err := net.Listen("unix", socketPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer listener.Close()
+		command := exec.Command(helper, "client", socketPath, queueName, bufferName)
+		var helperOutput bytes.Buffer
+		command.Stdout = &helperOutput
+		command.Stderr = &helperOutput
+		if err := command.Start(); err != nil {
+			t.Fatal(err)
+		}
+		connection, err := listener.Accept()
+		if err != nil {
+			command.Process.Kill()
+			t.Fatal(err)
+		}
+		session, sessionErr := newSession(config(queueName, bufferName), connection, false)
+		var stream *Stream
+		if sessionErr == nil {
+			stream, sessionErr = session.AcceptStream()
+		}
+		if sessionErr == nil {
+			for index, expected := range messages {
+				actual := make([]byte, len(expected))
+				if _, err := io.ReadFull(stream, actual); err != nil {
+					sessionErr = err
+					break
+				}
+				if !bytes.Equal(actual, expected) {
+					sessionErr = fmt.Errorf("C++ v3 fallback payload mismatch at %d", index)
+					break
+				}
+				if stream.inFallbackState != (index != 0) {
+					sessionErr = fmt.Errorf("Go v3 receive fallback state at %d = %t", index, stream.inFallbackState)
+					break
+				}
+			}
+		}
+		if sessionErr == nil {
+			_, sessionErr = stream.Write([]byte{0x7e})
+		}
+		if sessionErr == nil {
+			sessionErr = stream.Close()
+		}
+		if sessionErr != nil {
+			connection.Close()
+			command.Process.Kill()
+		}
+		helperErr := command.Wait()
+		if session != nil {
+			session.Close()
+		}
+		if sessionErr != nil || helperErr != nil {
+			t.Fatalf("C++ v3 client=%v Go v3 server=%v helper output=%s", helperErr, sessionErr, helperOutput.String())
+		}
+	})
+}
+
 func TestV2HandshakeInterop(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("full shmipc Session initialization requires Linux")

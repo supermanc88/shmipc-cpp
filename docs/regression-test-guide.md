@@ -18,7 +18,7 @@ git diff --check
 go run tools/go_oracle/run_control_header_oracle.go
 ```
 
-运行器首先要求 `third_party/shmipc-go` HEAD 严格等于 `55c241eea321071278d1ee7f7c46292d23e50a5b`，然后通过临时 overlay 把 oracle test 注入上游 package。它直接调用上游控制协议、buffer pool、queue 和真实 Session 初始化，并用 C++ helpers 做双向验证，不会修改 submodule 工作区。v2 Session 子项仅在 Linux 执行。
+运行器首先要求 `third_party/shmipc-go` HEAD 严格等于 `55c241eea321071278d1ee7f7c46292d23e50a5b`，然后通过临时 overlay 把 oracle test 注入上游 package。它直接调用上游控制协议、buffer pool、queue 和真实 Session 初始化，并用 C++ helpers 做双向验证，不会修改 submodule 工作区。v2/v3 Session 数据面子项仅在 Linux 执行。
 
 也可通过 CTest 运行完整本机集合：
 
@@ -58,7 +58,8 @@ ssh 23.2 'cd /home/chm/shmipc-cpp && \
   SHMIPC_CPP_V2_SERVER_SESSION_HELPER=$PWD/build/debug/tests/shmipc_v2_server_session_interop_helper \
   SHMIPC_CPP_PROTOCOL_VERSION_NEGOTIATION_HELPER=$PWD/build/debug/tests/shmipc_protocol_version_negotiation_interop_helper \
   SHMIPC_CPP_V3_HANDSHAKE_HELPER=$PWD/build/debug/tests/shmipc_v3_handshake_interop_helper \
-  ./build/v2-oracle-linux-amd64 -test.run "^(TestV2HandshakeInterop|TestV3HandshakeInterop)$" -test.v'
+  SHMIPC_CPP_V3_MULTIPLEXED_SESSION_HELPER=$PWD/build/debug/tests/shmipc_v3_multiplexed_session_interop_helper \
+  ./build/v2-oracle-linux-amd64 -test.run "^(TestV2HandshakeInterop|TestV3HandshakeInterop|TestV3MultiplexedSessionInterop)$" -test.v'
 ```
 
 ## 结果判定
@@ -80,7 +81,8 @@ ssh 23.2 'cd /home/chm/shmipc-cpp && \
 - `shmipc.v2_client_session`：Linux 上验证单 Stream 20,000→17,000 字节跨 slice round-trip、receive timeout、Polling 和双向 queue close；非 Linux 明确验证 epoll unsupported。
 - `shmipc.v2_server_session`：Linux 上验证动态绑定远端 Stream ID 2、三消息批量 Polling、跨 slice、timeout 与双向 queue close；非 Linux 明确验证 epoll unsupported。
 - `shmipc.v2_multiplexed_session`：Linux 上验证 client ID 2/3/4、并发首包、server Accept、独立双向消息、persistent deadline、queue-full retry/close fallback、buffer 耗尽数据 fallback、sticky ordering、并发 send/close、Session failure 扇出与资源生命周期。
-- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用真实 C++ helpers 双向传递 slice chain/queue elements；验证两个方向的 v3 版本协商与真实 `newSession` memfd 资源握手，并在 Linux 验证 v2 握手、单/多 Stream，以及 shared→fallback→sticky→反向 fallback ACK。
+- `shmipc.v3_multiplexed_session`：Linux 上通过真实 memfd/SCM_RIGHTS 资源验证 shared→fallback→sticky→ACK→close；非 Linux 明确验证 epoll unsupported。
+- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用真实 C++ helpers 双向传递 slice chain/queue elements；验证两个方向的 v3 版本协商、memfd 资源握手和完整多路 Session 数据面，并在 Linux 验证 v2 握手、单/多 Stream，以及 v2/v3 shared→fallback→sticky→反向 fallback ACK。
 - 任一 commit mismatch、缺行、重复/错序事件或字节差异均为失败，不允许自动更新 golden 后绕过评审。
 
 当前 golden 的 SHA-256：

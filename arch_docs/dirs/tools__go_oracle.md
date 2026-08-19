@@ -30,6 +30,7 @@
 - `TestV2ServerSessionInterop` 在 Linux 以真实 Go client 首个 Stream ID 2 验证 C++ server 的三消息双向数据；独立子场景分别验证 C++ 与 Go 主动关闭。
 - `TestV2MultiplexedSessionInterop` 在 Linux 双向验证 3 个连续 Stream：Go client→C++ server 与 C++ client→Go server 均检查 ID 2/3/4、跨 slice request/response 和主动关闭同步；远端普通 100 轮、ASan helper 20 轮通过。
 - `TestV2FallbackInterop` 在 Linux 双向验证 1 KiB shared→2 MiB buffer-exhaustion fallback→257 B sticky fallback，并用反向 fallback ACK 将数据消费与关闭分隔；远端普通 50 轮、ASan helper 10 轮通过。
+- `TestV3MultiplexedSessionInterop` 在 Linux 以真实 memfd Session 双向复验相同 shared→fallback→sticky→ACK→close 序列；远端普通 50 轮、ASan helper 10 轮通过。
 - 提交 `0347f34` 的 GitHub Actions run `32158446306` 在 Linux 完整执行 Go protocol oracle，CTest 为 15/15。
 - 提交 `78913e6` 的 GitHub Actions run `32204938990` 完整执行多 Stream oracle，CTest 为 16/16；Go client→C++ server 与 C++ client→Go server 的 ID 2/3/4 数据/关闭场景均通过。
 - runner 支持 `SHMIPC_GO_ORACLE_COMPILE_LINUX_AMD64=<output>`，用于在本机生成包含 overlay 的静态 Linux/amd64 test binary，再同步到无 Go 工具链的远端执行。
@@ -38,7 +39,7 @@
 
 ## Guesses & Uncertainties
 
-- 当前锁定控制协议正常编码、queue/buffer byte layout、buffer pool/queue 原子语义、Buffer IO 分档策略、v2/v3 握手双向互操作及 C++ client/server 单/多 Stream 数据面；macOS 会明确跳过依赖 Linux Session 的子项，正式证据来自远端和 CI。Go oracle 不替代 C++ 异常输入测试。
+- 当前锁定控制协议正常编码、queue/buffer byte layout、buffer pool/queue 原子语义、Buffer IO 分档策略、v2/v3 握手及两个版本的多 Stream 数据面双向互操作；macOS 会明确跳过依赖 Linux Session 的子项，正式证据来自远端和 CI。Go oracle 不替代 C++ 异常输入测试。
 - 上游 commit 升级必须显式更新 runner 常量、golden 来源和 ADR，不能静默接受。
 
 ## Links

@@ -8,6 +8,7 @@
 #include <optional>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 
 namespace shmipc::core {
 
@@ -69,7 +70,32 @@ struct V2StreamState final {
 
 struct V2MultiplexedSessionState final : transport::ControlEventCallback {
   V2MultiplexedSessionState(V2SharedMemory &&memory, bool server) noexcept
-      : shared_memory(std::move(memory)), is_server(server) {}
+      : shared_memory(std::in_place_type<V2SharedMemory>, std::move(memory)),
+        protocol_version(v2_protocol_version), is_server(server) {}
+
+  V2MultiplexedSessionState(V3SharedMemory &&memory, bool server) noexcept
+      : shared_memory(std::in_place_type<V3SharedMemory>, std::move(memory)),
+        protocol_version(v3_protocol_version), is_server(server) {}
+
+  shm::BufferPool &buffer_pool() noexcept {
+    return std::visit(
+        [](auto &memory) -> shm::BufferPool & { return memory.buffer_pool(); },
+        shared_memory);
+  }
+
+  shm::SharedQueue &send_queue() noexcept {
+    return std::visit(
+        [](auto &memory) -> shm::SharedQueue & { return memory.send_queue(); },
+        shared_memory);
+  }
+
+  shm::SharedQueue &receive_queue() noexcept {
+    return std::visit(
+        [](auto &memory) -> shm::SharedQueue & {
+          return memory.receive_queue();
+        },
+        shared_memory);
+  }
 
   transport::ConsumeResult on_data(const std::uint8_t *data, std::size_t size,
                                    transport::EventConnection &) override {
@@ -86,7 +112,7 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
       if (header.value.length > size - consumed) {
         break;
       }
-      if (header.value.version != v2_protocol_version) {
+      if (header.value.version != protocol_version) {
         fail(make_session_error(V2SessionError::unexpected_event));
         return {consumed, transport::TransportError::callback_error, 0};
       }
@@ -158,12 +184,12 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
 
   V2SessionStatus drain_receive_queue() {
     for (;;) {
-      const auto element = shared_memory.receive_queue().pop();
+      const auto element = receive_queue().pop();
       if (!element) {
         if (element.error != shm::QueueError::empty) {
           return make_queue_error(element.error);
         }
-        if (shared_memory.receive_queue().mark_not_working()) {
+        if (receive_queue().mark_not_working()) {
           return {};
         }
         continue;
@@ -177,15 +203,14 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
         return make_session_error(V2SessionError::unexpected_event);
       }
 
-      auto chain =
-          shared_memory.buffer_pool().adopt_chain(element.value.buffer_offset);
+      auto chain = buffer_pool().adopt_chain(element.value.buffer_offset);
       if (!chain) {
         auto status = make_session_error(V2SessionError::buffer_pool_error);
         status.buffer_pool_error = chain.error;
         return status;
       }
-      auto reader = shm::make_buffer_reader(shared_memory.buffer_pool(),
-                                            std::move(chain.value));
+      auto reader =
+          shm::make_buffer_reader(buffer_pool(), std::move(chain.value));
       if (!reader) {
         auto status = make_session_error(V2SessionError::buffer_io_error);
         status.buffer_io_error = reader.error;
@@ -278,7 +303,8 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
     }
   }
 
-  V2SharedMemory shared_memory;
+  std::variant<V2SharedMemory, V3SharedMemory> shared_memory;
+  const std::uint8_t protocol_version;
   const bool is_server;
   std::mutex mutex{};
   std::condition_variable condition{};
@@ -294,11 +320,11 @@ namespace {
 V2SessionStatus
 notify_peer(V2MultiplexedSessionState &state,
             const std::shared_ptr<transport::EventConnection> &connection) {
-  if (!state.shared_memory.send_queue().mark_working()) {
+  if (!state.send_queue().mark_working()) {
     return {};
   }
   const auto polling = protocol::encode_header(
-      {static_cast<std::uint32_t>(protocol::header_size), v2_protocol_version,
+      {static_cast<std::uint32_t>(protocol::header_size), state.protocol_version,
        protocol::EventType::polling});
   if (!polling) {
     auto status = make_session_error(V2SessionError::codec_error);
@@ -312,17 +338,17 @@ notify_peer(V2MultiplexedSessionState &state,
 
 void recycle_published(V2MultiplexedSessionState &state,
                        std::uint32_t root_offset) {
-  auto chain = state.shared_memory.buffer_pool().adopt_chain(root_offset);
+  auto chain = state.buffer_pool().adopt_chain(root_offset);
   if (chain) {
-    static_cast<void>(state.shared_memory.buffer_pool().recycle_chain(
-        std::move(chain.value)));
+    static_cast<void>(
+        state.buffer_pool().recycle_chain(std::move(chain.value)));
   }
 }
 
 V2SessionStatus put_data_with_retry(V2MultiplexedSessionState &session,
                                     V2StreamState &stream,
                                     const shm::QueueElement &element) {
-  auto queued = session.shared_memory.send_queue().put(element);
+  auto queued = session.send_queue().put(element);
   for (std::size_t attempt = 0U;
        queued == shm::QueueError::full && attempt < 10U; ++attempt) {
     std::unique_lock<std::mutex> lock(stream.mutex);
@@ -355,17 +381,17 @@ V2SessionStatus put_data_with_retry(V2MultiplexedSessionState &session,
       return make_session_error(V2SessionError::timeout);
     }
     lock.unlock();
-    queued = session.shared_memory.send_queue().put(element);
+    queued = session.send_queue().put(element);
   }
   return queued == shm::QueueError::none ? V2SessionStatus{}
                                          : make_queue_error(queued);
 }
 
 V2SessionStatus send_stream_close_fallback(
-    std::uint32_t stream_id,
+    std::uint8_t protocol_version, std::uint32_t stream_id,
     const std::shared_ptr<transport::EventConnection> &connection) {
   auto frame = protocol::encode_header(
-      {static_cast<std::uint32_t>(stream_close_frame_size), v2_protocol_version,
+      {static_cast<std::uint32_t>(stream_close_frame_size), protocol_version,
        protocol::EventType::stream_close});
   if (!frame) {
     auto status = make_session_error(V2SessionError::codec_error);
@@ -381,11 +407,12 @@ V2SessionStatus send_stream_close_fallback(
 }
 
 V2SessionStatus send_fallback_data(
-    std::uint32_t stream_id, const std::uint8_t *data, std::size_t size,
+    std::uint8_t protocol_version, std::uint32_t stream_id,
+    const std::uint8_t *data, std::size_t size,
     const std::shared_ptr<transport::EventConnection> &connection) {
   const std::vector<std::uint8_t> payload(data, data + size);
   const auto frame = protocol::encode_fallback_data(
-      v2_protocol_version, stream_id, stream_opened, payload);
+      protocol_version, stream_id, stream_opened, payload);
   if (!frame) {
     auto status = make_session_error(V2SessionError::codec_error);
     status.codec_error = frame.error;
@@ -457,9 +484,10 @@ V2SessionStatus V2Stream::send(const std::uint8_t *data, std::size_t size) {
     fallback = stream_->fallback;
   }
   if (fallback) {
-    return send_fallback_data(stream_->id, data, size, connection_);
+    return send_fallback_data(session_->protocol_version, stream_->id, data,
+                              size, connection_);
   }
-  shm::BufferWriter writer(session_->shared_memory.buffer_pool());
+  shm::BufferWriter writer(session_->buffer_pool());
   const auto written = writer.write_bytes(data, size);
   if (!written) {
     if (written.error == shm::BufferIoError::no_buffer) {
@@ -473,7 +501,8 @@ V2SessionStatus V2Stream::send(const std::uint8_t *data, std::size_t size) {
         }
         stream_->fallback = true;
       }
-      return send_fallback_data(stream_->id, data, size, connection_);
+      return send_fallback_data(session_->protocol_version, stream_->id, data,
+                                size, connection_);
     }
     auto status = make_session_error(V2SessionError::buffer_io_error);
     status.buffer_io_error = written.error;
@@ -615,12 +644,13 @@ V2SessionStatus V2Stream::close() {
   std::lock_guard<std::mutex> send_lock(stream_->send_mutex);
   V2SessionStatus status{};
   if (send_close) {
-    const auto queued = session_->shared_memory.send_queue().put(
+    const auto queued = session_->send_queue().put(
         {stream_->id, 0U, stream_closed});
     if (queued == shm::QueueError::none) {
       status = notify_peer(*session_, connection_);
     } else if (queued == shm::QueueError::full) {
-      status = send_stream_close_fallback(stream_->id, connection_);
+      status = send_stream_close_fallback(
+          session_->protocol_version, stream_->id, connection_);
     } else {
       status = make_queue_error(queued);
     }
@@ -803,6 +833,68 @@ start_v2_multiplexed_server_session(transport::ControlSocket &&socket,
   return {
       V2MultiplexedServerSession(std::move(state), std::move(connection.value)),
       {}};
+}
+
+V3MultiplexedClientSessionResult
+start_v3_multiplexed_client_session(transport::ControlSocket &&socket,
+                                    const V3ClientConfig &config,
+                                    transport::EpollDispatcher &dispatcher) {
+  if (!socket || !dispatcher) {
+    return {{}, make_session_error(V2SessionError::invalid_argument), {}};
+  }
+  auto handshake = v3_client_handshake(socket, config);
+  if (!handshake) {
+    auto status = make_session_error(V2SessionError::handshake_error);
+    status.system_error = handshake.status.system_error;
+    status.transport_error = handshake.status.transport_error;
+    status.codec_error = handshake.status.codec_error;
+    status.queue_error = handshake.status.queue_error;
+    status.buffer_pool_error = handshake.status.buffer_pool_error;
+    return {{}, status, handshake.status};
+  }
+  auto state = std::make_shared<V2MultiplexedSessionState>(
+      std::move(handshake.value), false);
+  auto connection = dispatcher.add(std::move(socket), state);
+  if (!connection) {
+    auto status = make_session_error(V2SessionError::dispatcher_error);
+    status.transport_error = connection.error;
+    status.system_error = connection.system_error;
+    return {{}, status, {}};
+  }
+  return {
+      V3MultiplexedClientSession(std::move(state), std::move(connection.value)),
+      {}, {}};
+}
+
+V3MultiplexedServerSessionResult
+start_v3_multiplexed_server_session(transport::ControlSocket &&socket,
+                                    transport::EpollDispatcher &dispatcher,
+                                    std::uint32_t max_frame_length) {
+  if (!socket || !dispatcher || max_frame_length < protocol::header_size) {
+    return {{}, make_session_error(V2SessionError::invalid_argument), {}};
+  }
+  auto handshake = v3_server_handshake(socket, max_frame_length);
+  if (!handshake) {
+    auto status = make_session_error(V2SessionError::handshake_error);
+    status.system_error = handshake.status.system_error;
+    status.transport_error = handshake.status.transport_error;
+    status.codec_error = handshake.status.codec_error;
+    status.queue_error = handshake.status.queue_error;
+    status.buffer_pool_error = handshake.status.buffer_pool_error;
+    return {{}, status, handshake.status};
+  }
+  auto state = std::make_shared<V2MultiplexedSessionState>(
+      std::move(handshake.value), true);
+  auto connection = dispatcher.add(std::move(socket), state);
+  if (!connection) {
+    auto status = make_session_error(V2SessionError::dispatcher_error);
+    status.transport_error = connection.error;
+    status.system_error = connection.system_error;
+    return {{}, status, {}};
+  }
+  return {
+      V3MultiplexedServerSession(std::move(state), std::move(connection.value)),
+      {}, {}};
 }
 
 } // namespace shmipc::core

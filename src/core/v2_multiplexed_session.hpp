@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/v2_client_session.hpp"
+#include "core/v3_handshake.hpp"
 
 #include <chrono>
 #include <cstddef>
@@ -73,6 +74,7 @@ struct V2StreamResult {
 };
 
 struct V2MultiplexedClientSessionResult;
+struct V3MultiplexedClientSessionResult;
 
 class V2MultiplexedClientSession final {
 public:
@@ -97,6 +99,10 @@ private:
   start_v2_multiplexed_client_session(transport::ControlSocket &&,
                                       const V2ClientConfig &,
                                       transport::EpollDispatcher &);
+  friend V3MultiplexedClientSessionResult
+  start_v3_multiplexed_client_session(transport::ControlSocket &&,
+                                      const V3ClientConfig &,
+                                      transport::EpollDispatcher &);
 
   V2MultiplexedClientSession(
       std::shared_ptr<V2MultiplexedSessionState> state,
@@ -116,6 +122,7 @@ struct V2MultiplexedClientSessionResult {
 };
 
 struct V2MultiplexedServerSessionResult;
+struct V3MultiplexedServerSessionResult;
 
 class V2MultiplexedServerSession final {
 public:
@@ -138,6 +145,8 @@ private:
   friend struct V2MultiplexedServerSessionResult;
   friend V2MultiplexedServerSessionResult start_v2_multiplexed_server_session(
       transport::ControlSocket &&, transport::EpollDispatcher &, std::uint32_t);
+  friend V3MultiplexedServerSessionResult start_v3_multiplexed_server_session(
+      transport::ControlSocket &&, transport::EpollDispatcher &, std::uint32_t);
 
   V2MultiplexedServerSession(
       std::shared_ptr<V2MultiplexedSessionState> state,
@@ -156,6 +165,31 @@ struct V2MultiplexedServerSessionResult {
   }
 };
 
+using V3Stream = V2Stream;
+using V3StreamResult = V2StreamResult;
+using V3MultiplexedClientSession = V2MultiplexedClientSession;
+using V3MultiplexedServerSession = V2MultiplexedServerSession;
+
+struct V3MultiplexedClientSessionResult {
+  V3MultiplexedClientSession value{};
+  V2SessionStatus status{};
+  V3HandshakeStatus handshake_status{};
+
+  [[nodiscard]] explicit operator bool() const noexcept {
+    return static_cast<bool>(status);
+  }
+};
+
+struct V3MultiplexedServerSessionResult {
+  V3MultiplexedServerSession value{};
+  V2SessionStatus status{};
+  V3HandshakeStatus handshake_status{};
+
+  [[nodiscard]] explicit operator bool() const noexcept {
+    return static_cast<bool>(status);
+  }
+};
+
 [[nodiscard]] V2MultiplexedClientSessionResult
 start_v2_multiplexed_client_session(transport::ControlSocket &&socket,
                                     const V2ClientConfig &config,
@@ -165,5 +199,15 @@ start_v2_multiplexed_client_session(transport::ControlSocket &&socket,
 start_v2_multiplexed_server_session(
     transport::ControlSocket &&socket, transport::EpollDispatcher &dispatcher,
     std::uint32_t max_frame_length = v2_max_metadata_frame_length);
+
+[[nodiscard]] V3MultiplexedClientSessionResult
+start_v3_multiplexed_client_session(transport::ControlSocket &&socket,
+                                    const V3ClientConfig &config,
+                                    transport::EpollDispatcher &dispatcher);
+
+[[nodiscard]] V3MultiplexedServerSessionResult
+start_v3_multiplexed_server_session(
+    transport::ControlSocket &&socket, transport::EpollDispatcher &dispatcher,
+    std::uint32_t max_frame_length = v3_max_metadata_frame_length);
 
 } // namespace shmipc::core
