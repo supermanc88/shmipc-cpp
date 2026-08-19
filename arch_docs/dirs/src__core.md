@@ -37,6 +37,7 @@
 - `tests/v2_client_session_test.cpp` 与 Go oracle 验证 C++ client→Go server 的 20,000/17,000 字节双向链、Polling、timeout 和 close；远端 Debug/ASan、50/50 重复及提交 `050d7da` 的 run `32154121843` 七项门禁通过。
 - `tests/v2_server_session_test.cpp` 与 Go oracle 验证 Go client→C++ server 的三消息双向链、ID 2 动态绑定、批量 Polling 和两个方向 close；远端 Debug/ASan 14/14、普通 300/300、ASan 50/50 及提交 `0347f34` 的 run `32158446306` 七项门禁通过。
 - `tests/v2_multiplexed_session_test.cpp` 与双向 Go oracle 验证 ID 2/3/4、并发首包、server Accept、独立收发、deadline、queue-full retry/close fallback、错误扇出与无 ACK close；本地三套 sanitizer、远端 Debug/ASan、普通互操作 100 轮及 ASan 20 轮通过。
+- 提交 `78913e6` 的 GitHub Actions run `32204938990` 七项门禁全部成功，Go protocol oracle CTest 为 16/16；`S-0305a/b` 与 M3 正式关闭。
 
 ## Links
 

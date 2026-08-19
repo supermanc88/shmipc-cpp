@@ -29,13 +29,13 @@
 | v2 `/dev/shm` 握手 | 已验证 | 双向真实 Go Session、错误/清理路径、远端 50/50、run `32151993614` 七项门禁 | 持续回归 |
 | v2 client 单 Session/Stream | 已验证 | C++/Go 20,000→17,000 字节、Polling、timeout、close、远端 ASan/50 轮、run `32154121843` | 持续回归 |
 | v2 server 单 Session/Stream | 已验证 | Go client ID 2、三消息、双向 close、远端 Debug/ASan、300/300、ASan 50/50、run `32158446306` | 持续回归 |
-| v2 client-originated 多 Stream | 部分完成 | ID 2/3/4、并发首包、deadline、queue-full retry/close fallback、错误扇出、双向 Go 100 轮、ASan 20 轮；云端待 push | push 后关闭 M3 门禁 |
+| v2 client-originated 多 Stream | 已验证 | ID 2/3/4、并发首包、deadline、queue-full retry/close fallback、错误扇出、双向 Go 100 轮、ASan 20 轮、run `32204938990` | 持续回归 |
 
 ## 产品需求
 
 | Requirement IDs | 能力 | 状态 | 首个实现切片 |
 |---|---|---|---|
-| `COMP-001` | Go↔C++ v2 双向互通 | 握手、两个方向单 Stream、client-originated 多 Stream、deadline 与错误扇出已完成本地/远端验证；云端待 push | M3 |
+| `COMP-001` | Go↔C++ v2 双向互通 | 握手、两个方向单 Stream、client-originated 多 Stream、deadline 与错误扇出已由 run `32204938990` 验证 | M3 |
 | `S-0301` | Unix/TCP control transport 与 epoll | 已验证；run `32148166394` 七项门禁成功 | M3 |
 | `COMP-002` | Go↔C++ v3 双向互通 | 基线锁定 | M4 |
 | `PROTO-001` | 控制头、事件、metadata 与 fallback 编解码 | 已验证 | `S-0101` |

@@ -152,9 +152,9 @@
 ## 分析进度
 
 - 已完成：上游架构分析、M0、M1、M2，以及 M3 `S-0301..0304`；提交 `0347f34` 的 run `32158446306` 七项门禁全部成功，Go protocol oracle 为 15/15。
-- 已完成（云端待 push）：`S-0305a/b` 多 Stream、deadline、queue-full retry/close fallback、路由回收和 Session 错误扇出已完成本地/远端验证。
+- 已完成：`S-0305a/b` 多 Stream、deadline、queue-full retry/close fallback、路由回收和 Session 错误扇出已通过提交 `78913e6` 的云端七项门禁，M3 正式关闭。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
-- 待验证：共享内存耗尽的数据 fallback、v3 与更完整的异常注入矩阵。多 Stream 两个角色及 deadline/关闭/Session 断开已完成本机和远端验证，云端门禁待 push。
+- 待验证：共享内存耗尽的数据 fallback、v3 与更完整的异常注入矩阵。多 Stream 两个角色及 deadline/关闭/Session 断开已完成本机、远端和云端验证。
 
 ## 状态标记
 

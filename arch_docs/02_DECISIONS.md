@@ -205,7 +205,7 @@
 
 ### D-025：多路实现分离连接级路由与 per-Stream 状态
 
-- 状态：`S-0305a` 本地/远端已验证；云端门禁待 push
+- 状态：已验证；提交 `78913e6` 的 run `32204938990` 七项门禁全部成功
 - 结构：保留已验证的单 Stream client/server 作为回归基线，新建 `V2MultiplexedSessionState` 统一拥有共享内存、路由表、accept 队列和 Session failure；每个 `V2StreamState` 独立拥有消息队列、mutex/condition variable 与关闭状态，`V2Stream` 只作为 move-only 句柄。
 - Open/Accept：client 从 2 连续分配并先注册再发送；server 不因控制连接建立或 client 创建句柄而 Accept，只在未知 opened queue element 首次到达时创建并投递 Stream。固定 Go 不支持的 server-originated Open 不进入兼容承诺。
 - close：opened 一侧主动 close 发送一次 closed element；收到 remote close 后进入 half-closed，本地 close 不回 ACK。测试必须指定唯一主动关闭方，不能把 close 当成请求/响应握手。
@@ -215,7 +215,7 @@
 
 ### D-026：deadline 只约束等待，queue-full 重试与 close fallback 保持 Go 顺序
 
-- 状态：`S-0305b` 本地/远端已验证；云端门禁待 push
+- 状态：已验证；提交 `78913e6` 的 run `32204938990` 七项门禁全部成功
 - read deadline：Stream 保存可清除的 `steady_clock` 绝对时间；更新 deadline 会唤醒已经阻塞的 receive，并持续影响未来 receive。调用级 timeout 与 persistent deadline 取较早者。
 - write deadline：普通 buffer publish/queue put 不因 write deadline 失败；只有 queue full 后的最多 10 次、每次 10ms retry 受它约束。失败路径回收已 publish chain。
 - close fallback：closed element 若因 queue full 无法入队，编码 12 字节 v2 `StreamClose(stream_id)` 走有序控制连接；peer 同时接受 queue/control 两条关闭路径。
@@ -301,3 +301,4 @@
 - 2026-08-18：`S-0304` 新增 v2 server 单 Stream，按真实 Go client 首个 ID 2 动态绑定，完成多消息、跨 slice 与两个方向的关闭互操作。300 轮压力发现并修正无 ACK 握手下 mapper 对活动 free-list 的错误快照假设；本机三套 Sanitizer、远端 Debug/ASan、普通 300/300 与 ASan 50/50 通过，等待云端门禁。影响文档：索引、概要、本文件、root/core/shm/oracle 目录、buffer pool/server session 文件、关系图、移植计划、回归指南和功能矩阵。
 - 2026-08-19：提交 `0347f34` 的 GitHub Actions run `32158446306` 七项作业及关键步骤全部成功，GCC/Clang Debug/Release 的安装验证实际执行，Go protocol oracle 为 15/15；`S-0304` 正式关闭。影响文档：索引、概要、本文件、root/core/oracle 目录、server session 文件、项目工作流、移植计划和功能矩阵。
 - 2026-08-19：`S-0305` 源码追踪证伪“奇偶 Stream ID”注释假设；固定 Go 实现按 1 递增且只支持 client-originated Open→server Accept。计划改为连续 ID 与单向开流兼容矩阵。影响文档：本文件、移植计划。
+- 2026-08-19：提交 `78913e6` 的 GitHub Actions run `32204938990` 中 GCC/Clang Debug/Release、ASan+UBSan、TSan 与 Go protocol oracle 七项作业全部成功；oracle CTest 16/16，`S-0305a/b` 与 M3 正式关闭。影响文档：索引、本文件、core/oracle 目录、项目计划、工作流和功能矩阵。
