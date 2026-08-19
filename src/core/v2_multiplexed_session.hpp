@@ -3,6 +3,7 @@
 #include "core/v2_client_session.hpp"
 #include "core/v3_handshake.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -11,6 +12,26 @@
 #include <vector>
 
 namespace shmipc::core {
+
+inline constexpr std::chrono::seconds session_circuit_breaker_duration{30};
+
+class SessionCircuitBreaker final {
+public:
+  using Clock = std::chrono::steady_clock;
+
+  explicit SessionCircuitBreaker(
+      std::chrono::nanoseconds duration = session_circuit_breaker_duration)
+      noexcept;
+
+  void open() noexcept;
+  [[nodiscard]] bool is_healthy() const noexcept;
+
+private:
+  [[nodiscard]] static std::int64_t now_ticks() noexcept;
+
+  const std::int64_t duration_ticks_;
+  std::atomic<std::int64_t> unhealthy_until_{0};
+};
 
 struct V2MultiplexedSessionState;
 struct V2StreamState;
@@ -90,6 +111,7 @@ public:
 
   [[nodiscard]] explicit operator bool() const noexcept;
   [[nodiscard]] bool is_open() const noexcept;
+  [[nodiscard]] bool is_healthy() const noexcept;
   [[nodiscard]] V2StreamResult open_stream();
   [[nodiscard]] V2SessionStatus close() noexcept;
 
@@ -138,6 +160,7 @@ public:
 
   [[nodiscard]] explicit operator bool() const noexcept;
   [[nodiscard]] bool is_open() const noexcept;
+  [[nodiscard]] bool is_healthy() const noexcept;
   [[nodiscard]] V2StreamResult accept_stream(std::chrono::milliseconds timeout);
   [[nodiscard]] V2SessionStatus close() noexcept;
 

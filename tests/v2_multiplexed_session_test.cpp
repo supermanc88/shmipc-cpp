@@ -240,6 +240,9 @@ bool test_buffer_exhaustion_sticky_fallback() {
   const std::vector<std::uint8_t> sticky(257U, 0x73U);
   if (!client_stream.send(shared) || client_stream.is_fallback() ||
       !client_stream.send(exhausted) || !client_stream.is_fallback() ||
+      client.value.is_healthy() ||
+      client.value.open_stream().status.error !=
+          shmipc::core::V2SessionError::unhealthy ||
       !client_stream.send(sticky) || !client_stream.is_fallback()) {
     return false;
   }
@@ -254,7 +257,8 @@ bool test_buffer_exhaustion_sticky_fallback() {
     return false;
   }
   const auto second = server_stream.receive(5s);
-  if (!second || second.value != exhausted || !server_stream.is_fallback()) {
+  if (!second || second.value != exhausted || !server_stream.is_fallback() ||
+      server.value.is_healthy()) {
     return false;
   }
   const auto third = server_stream.receive(5s);
@@ -359,6 +363,9 @@ bool test_queue_full_retry_and_close_fallback() {
       header.value.length != close_frame.size() || close_id != stream.id()) {
     return false;
   }
+  if (!client.value.is_healthy()) {
+    return false;
+  }
 
   for (std::size_t index = 0U; index < 8U; ++index) {
     const auto element = server.value.receive_queue().pop();
@@ -443,13 +450,37 @@ bool test_invalid_state() {
              shmipc::core::V2SessionError::invalid_argument &&
          client.open_stream().status.error ==
              shmipc::core::V2SessionError::invalid_argument &&
+         !client.is_healthy() && !server.is_healthy() &&
          server.accept_stream(1ms).status.error ==
              shmipc::core::V2SessionError::invalid_argument;
+}
+
+bool test_session_circuit_breaker() {
+  shmipc::core::SessionCircuitBreaker breaker(200ms);
+  if (!breaker.is_healthy()) {
+    return false;
+  }
+  breaker.open();
+  if (breaker.is_healthy()) {
+    return false;
+  }
+  std::this_thread::sleep_for(50ms);
+  breaker.open();
+  std::this_thread::sleep_for(170ms);
+  if (!breaker.is_healthy()) {
+    return false;
+  }
+  breaker.open();
+  return !breaker.is_healthy();
 }
 
 } // namespace
 
 int main() {
+  if (!test_session_circuit_breaker()) {
+    std::cerr << "session circuit breaker test failed\n";
+    return 1;
+  }
   if (!test_three_stream_round_trip()) {
     std::cerr << "v2 multiplexed three-stream round-trip test failed\n";
     return 1;

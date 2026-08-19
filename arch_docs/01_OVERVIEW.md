@@ -153,6 +153,8 @@
 - `S-0402` 云端验证：提交 `568817c` 的 GitHub Actions run `32209295664` 七项作业全部成功。
 - `S-0403a` 验证：共享内存耗尽触发 FallbackData，后续小消息保持 sticky；queue full 不切换。固定 Go 双向 1 KiB shared→2 MiB fallback→257 B sticky→fallback ACK 普通 50 轮、ASan helper 10 轮通过。
 - `S-0403b` 验证：同一多路数据面以 `V2SharedMemory/V3SharedMemory` variant 和运行期协议版本同时服务 v2 文件与 v3 memfd；C++ v3 端到端测试及固定 Go 双向 Session oracle 覆盖 shared→fallback→sticky→ACK→close。本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 18/18，普通互操作 50 轮、ASan helper 10 轮通过。
+- `S-0403b` 云端验证：提交 `4b2c7f1` 的 GitHub Actions run `32223456643` 七项作业全部成功，Go protocol oracle 完整执行 v3 多路 Session 双向数据面。
+- `S-0404` 验证：发送或接收 FallbackData 打开 Session 级 30 秒 breaker，窗口内 `OpenStream` 返回 `unhealthy`，已有 Stream 继续工作；重复触发不延长当前窗口，到期后可恢复并再次打开。本机/远端完整门禁及固定 Go v2/v3 双向普通 50 轮、ASan helper 10 轮通过。
 - 时钟注意：本机当前比远端快约 2 分 20 秒；同步时不得保留本机文件时间戳，否则 Ninja 会反复重新生成。标准命令见 `PROJECT_WORKFLOW.md`。
 - Linux 运行基线：本机用 Go 1.25.10 交叉编译固定提交的 amd64 测试二进制，rsync 至远端后完整测试 `PASS`、退出码 0；覆盖 v2、v3/memfd、队列、Stream/Session 和热重启路径。
 - CI：`.github/workflows/tests.yaml` 在 Ubuntu 运行单测/benchmark，并在自托管 Linux 上覆盖 Go 1.21–1.25；`.github/workflows/pre_check.yaml` 运行许可证、拼写和 golangci-lint。

@@ -26,6 +26,7 @@ enum class V2SessionError {
     queue_error,
     buffer_pool_error,
     buffer_io_error,
+    unhealthy,
     closed,
     timeout,
 };

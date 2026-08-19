@@ -1,5 +1,6 @@
 #include "core/v2_multiplexed_session.hpp"
 
+#include <algorithm>
 #include <condition_variable>
 #include <cstring>
 #include <deque>
@@ -11,6 +12,30 @@
 #include <variant>
 
 namespace shmipc::core {
+
+SessionCircuitBreaker::SessionCircuitBreaker(
+    std::chrono::nanoseconds duration) noexcept
+    : duration_ticks_(std::max<std::int64_t>(duration.count(), 1)) {}
+
+std::int64_t SessionCircuitBreaker::now_ticks() noexcept {
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             Clock::now().time_since_epoch())
+      .count();
+}
+
+void SessionCircuitBreaker::open() noexcept {
+  const auto now = now_ticks();
+  auto unhealthy_until = unhealthy_until_.load(std::memory_order_seq_cst);
+  while (unhealthy_until <= now &&
+         !unhealthy_until_.compare_exchange_weak(
+             unhealthy_until, now + duration_ticks_,
+             std::memory_order_seq_cst, std::memory_order_seq_cst)) {
+  }
+}
+
+bool SessionCircuitBreaker::is_healthy() const noexcept {
+  return unhealthy_until_.load(std::memory_order_seq_cst) <= now_ticks();
+}
 
 namespace {
 
@@ -129,6 +154,7 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
         } else if (fallback.value.stream_state != stream_opened) {
           status = make_session_error(V2SessionError::unexpected_event);
         } else {
+          circuit_breaker.open();
           status = deliver_message(fallback.value.stream_id,
                                    std::move(fallback.value.payload), true);
         }
@@ -306,6 +332,7 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
   std::variant<V2SharedMemory, V3SharedMemory> shared_memory;
   const std::uint8_t protocol_version;
   const bool is_server;
+  SessionCircuitBreaker circuit_breaker{};
   std::mutex mutex{};
   std::condition_variable condition{};
   std::unordered_map<std::uint32_t, std::shared_ptr<V2StreamState>> streams{};
@@ -484,6 +511,7 @@ V2SessionStatus V2Stream::send(const std::uint8_t *data, std::size_t size) {
     fallback = stream_->fallback;
   }
   if (fallback) {
+    session_->circuit_breaker.open();
     return send_fallback_data(session_->protocol_version, stream_->id, data,
                               size, connection_);
   }
@@ -501,6 +529,7 @@ V2SessionStatus V2Stream::send(const std::uint8_t *data, std::size_t size) {
         }
         stream_->fallback = true;
       }
+      session_->circuit_breaker.open();
       return send_fallback_data(session_->protocol_version, stream_->id, data,
                                 size, connection_);
     }
@@ -691,6 +720,10 @@ bool V2MultiplexedClientSession::is_open() const noexcept {
   return connection_ && connection_->is_open();
 }
 
+bool V2MultiplexedClientSession::is_healthy() const noexcept {
+  return state_ && state_->circuit_breaker.is_healthy();
+}
+
 V2StreamResult V2MultiplexedClientSession::open_stream() {
   if (!state_ || !connection_) {
     return {{}, make_session_error(V2SessionError::invalid_argument)};
@@ -703,6 +736,9 @@ V2StreamResult V2MultiplexedClientSession::open_stream() {
       return {{},
               !state_->failure ? state_->failure
                                : make_session_error(V2SessionError::closed)};
+    }
+    if (!state_->circuit_breaker.is_healthy()) {
+      return {{}, make_session_error(V2SessionError::unhealthy)};
     }
     const auto id = ++state_->next_stream_id;
     stream = std::make_shared<V2StreamState>(id);
@@ -742,6 +778,10 @@ V2MultiplexedServerSession::operator bool() const noexcept {
 
 bool V2MultiplexedServerSession::is_open() const noexcept {
   return connection_ && connection_->is_open();
+}
+
+bool V2MultiplexedServerSession::is_healthy() const noexcept {
+  return state_ && state_->circuit_breaker.is_healthy();
 }
 
 V2StreamResult

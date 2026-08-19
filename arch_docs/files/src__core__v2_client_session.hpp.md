@@ -6,7 +6,7 @@
 
 ## Types（全量）
 
-- `V2SessionError`：参数、握手、dispatcher、transport、codec、事件/stream、queue、pool、Buffer IO、关闭与超时分类。
+- `V2SessionError`：参数、握手、dispatcher、transport、codec、事件/stream、queue、pool、Buffer IO、Session unhealthy、关闭与超时分类；多路 Session 使用 unhealthy 表示 breaker 拒绝新流。
 - `V2SessionStatus`：保留握手和各底层子系统错误。
 - `V2ClientSession`：move-only Session owner；当前固定 Stream ID 1，提供 `send`、`receive`、`close_stream`、`wait_remote_close` 与 `close`。
 - `V2ClientSession::MessageResult`：一条完整共享内存消息及状态。

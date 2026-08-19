@@ -27,6 +27,7 @@ graph TD
   client_session["src/core/v2_client_session"]
   server_session["src/core/v2_server_session"]
   multiplexed_session["src/core/v2_multiplexed_session"]
+  breaker["SessionCircuitBreaker / 30s unhealthy"]
   transport_test["tests/control_socket_test.cpp"]
   dispatcher_test["tests/epoll_dispatcher_test.cpp"]
   atomic["src/shm/atomic_word"]
@@ -86,6 +87,8 @@ graph TD
   multiplexed_session -- routes by Stream ID --> buffer_io
   multiplexed_session -- puts/pops --> shared_queue
   multiplexed_session -- registers callback --> dispatcher
+  multiplexed_session -- opens/checks --> breaker
+  breaker -- rejects new streams --> multiplexed_session
   transport_test -- calls --> transport
   dispatcher_test -- calls --> dispatcher
   mapping -- owns --> os_mapping["mmap / file FD / memfd"]

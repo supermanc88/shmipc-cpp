@@ -80,6 +80,11 @@ bool test_v3_shared_and_sticky_fallback() {
             return false;
         }
     }
+    if (client.value.is_healthy() ||
+        client.value.open_stream().status.error !=
+            shmipc::core::V2SessionError::unhealthy) {
+        return false;
+    }
 
     auto accepted = server.value.accept_stream(5s);
     if (!accepted || accepted.value.id() != 2U) {
@@ -92,6 +97,9 @@ bool test_v3_shared_and_sticky_fallback() {
             server_stream.is_fallback() != (index != 0U)) {
             return false;
         }
+    }
+    if (server.value.is_healthy()) {
+        return false;
     }
 
     const std::vector<std::uint8_t> acknowledgement{0x7eU};
@@ -125,6 +133,7 @@ bool test_invalid_state() {
                shmipc::core::V2SessionError::invalid_argument &&
            client.open_stream().status.error ==
                shmipc::core::V2SessionError::invalid_argument &&
+           !client.is_healthy() && !server.is_healthy() &&
            server.accept_stream(1ms).status.error ==
                shmipc::core::V2SessionError::invalid_argument;
 }

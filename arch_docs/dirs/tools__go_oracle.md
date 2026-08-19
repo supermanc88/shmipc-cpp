@@ -31,6 +31,7 @@
 - `TestV2MultiplexedSessionInterop` 在 Linux 双向验证 3 个连续 Stream：Go client→C++ server 与 C++ client→Go server 均检查 ID 2/3/4、跨 slice request/response 和主动关闭同步；远端普通 100 轮、ASan helper 20 轮通过。
 - `TestV2FallbackInterop` 在 Linux 双向验证 1 KiB shared→2 MiB buffer-exhaustion fallback→257 B sticky fallback，并用反向 fallback ACK 将数据消费与关闭分隔；远端普通 50 轮、ASan helper 10 轮通过。
 - `TestV3MultiplexedSessionInterop` 在 Linux 以真实 memfd Session 双向复验相同 shared→fallback→sticky→ACK→close 序列；远端普通 50 轮、ASan helper 10 轮通过。
+- `S-0404` 扩展两个 fallback oracle：Go/C++ 发送端与接收端均断言 Session unhealthy、`OpenStream` 返回 `ErrSessionUnhealthy`/`unhealthy`，已有 Stream 继续 ACK 和关闭。压力同时确认 Go Reader 可因批量搬运 pending fallback 而提前进入 sticky，故只约束 fallback 之后的状态。
 - 提交 `0347f34` 的 GitHub Actions run `32158446306` 在 Linux 完整执行 Go protocol oracle，CTest 为 15/15。
 - 提交 `78913e6` 的 GitHub Actions run `32204938990` 完整执行多 Stream oracle，CTest 为 16/16；Go client→C++ server 与 C++ client→Go server 的 ID 2/3/4 数据/关闭场景均通过。
 - runner 支持 `SHMIPC_GO_ORACLE_COMPILE_LINUX_AMD64=<output>`，用于在本机生成包含 overlay 的静态 Linux/amd64 test binary，再同步到无 Go 工具链的远端执行。

@@ -626,6 +626,8 @@ const char* to_string(V2SessionError error) noexcept {
             return "buffer pool error";
         case V2SessionError::buffer_io_error:
             return "buffer IO error";
+        case V2SessionError::unhealthy:
+            return "unhealthy";
         case V2SessionError::closed:
             return "closed";
         case V2SessionError::timeout:

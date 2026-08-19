@@ -92,8 +92,8 @@
 | `src/core/v2_client_session.hpp` | ✅ | #session #stream #errors | 单 client Session/Stream API 与错误模型 |
 | `src/core/v2_client_session.cpp` | ✅ | #epoll #queue #buffer | Polling、消息收发、timeout 与 close 状态机 |
 | `src/core/v2_server_session.hpp` | ✅ | #server #session #stream | 首个远端 Stream 动态绑定与服务端 API |
-| `src/core/v2_multiplexed_session.hpp` | ✅ | #session #stream #v2 #v3 | 版本无关多路数据面、v2/v3 启动入口与兼容别名 |
-| `src/core/v2_multiplexed_session.cpp` | ✅ | #session #routing #fallback | V2/V3SharedMemory variant、版本化控制帧与 Stream 路由实现 |
+| `src/core/v2_multiplexed_session.hpp` | ✅ | #session #stream #v2 #v3 | 版本无关多路数据面、Session circuit breaker、v2/v3 启动入口与兼容别名 |
+| `src/core/v2_multiplexed_session.cpp` | ✅ | #session #routing #fallback | 资源 variant、版本化控制帧、30 秒 unhealthy 窗口与 Stream 路由实现 |
 | `tests/version_test.cpp` | ✅ | #test | 无第三方依赖的首个 library test |
 | `tests/control_header_golden_test.cpp` | ✅ | #test #protocol #golden | C++ 侧消费 control-header fixture |
 | `tests/protocol_codec_test.cpp` | ✅ | #test #protocol #negative | metadata/fallback round-trip 与异常输入测试 |
@@ -162,6 +162,7 @@
 | C++ v2 client-originated 多 Stream | `src/core/v2_multiplexed_session.*`, `tests/v2_multiplexed_session*` | `COMP-001`, `STREAM-001..002` |
 | 控制通道 sticky fallback | `src/core/v2_multiplexed_session.*`, `stream.go`, `protocol_manager.go` | `STREAM-003` |
 | C++ v3 多路 Session 数据面 | `src/core/v2_multiplexed_session.*`, `tests/v3_multiplexed_session*`, `tools/go_oracle/` | `COMP-002`, `STREAM-001..004` |
+| Session fallback 熔断 | `src/core/v2_multiplexed_session.*`, `stream.go`, `session.go`, `tools/go_oracle/` | `STREAM-003` |
 | 服务监听和热重启 | `listener.go`, `session_manager.go` | `API-002`, `OPS-001` |
 | 性能与稳定性指标 | `stats.go`, `bench_test.go` | `NFR-003`, `OBS-001` |
 
@@ -172,9 +173,10 @@
 - 已完成：`S-0401` 的提交 `807b4fa` 经 GitHub Actions run `32207020590` 七项门禁通过。
 - 已完成：`S-0402` 的提交 `568817c` 经 GitHub Actions run `32209295664` 七项门禁通过。
 - 已完成：`S-0403a` 数据 fallback 与 sticky ordering 已由提交 `c8d6ade` 及 GitHub Actions run `32212075730` 七项门禁关闭。
-- 进行中：`S-0403b` 已把共用多路数据面接入 v3 memfd 资源；本机三套 18/18、远端 Debug/ASan 18/18、固定 Go 双向普通 50 轮及 ASan 10 轮通过，待提交与云端门禁。
+- 已完成：`S-0403b` 已由提交 `4b2c7f1` 和 GitHub Actions run `32223456643` 七项门禁关闭。
+- 进行中：`S-0404` 已实现发送/接收 fallback 打开 30 秒 Session breaker、期间拒绝新流及自动恢复；本机三套、远端 Debug/ASan、固定 Go 双向普通 50 轮及 ASan 10 轮通过，待提交与云端门禁。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
-- 待验证：fallback/close 跨通道协议级 barrier 和更完整的异常注入矩阵。v3 握手、多路数据面、sticky fallback 与生命周期已完成本机、远端和固定 Go 双向验证。
+- 待验证：fallback/close 跨通道协议级 barrier 和更完整的异常注入矩阵。v3 握手、多路数据面、sticky fallback、Session breaker 与生命周期已完成本机、远端和固定 Go 双向验证。
 
 ## 状态标记
 

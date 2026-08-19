@@ -82,7 +82,7 @@ ssh 23.2 'cd /home/chm/shmipc-cpp && \
 - `shmipc.v2_server_session`：Linux 上验证动态绑定远端 Stream ID 2、三消息批量 Polling、跨 slice、timeout 与双向 queue close；非 Linux 明确验证 epoll unsupported。
 - `shmipc.v2_multiplexed_session`：Linux 上验证 client ID 2/3/4、并发首包、server Accept、独立双向消息、persistent deadline、queue-full retry/close fallback、buffer 耗尽数据 fallback、sticky ordering、并发 send/close、Session failure 扇出与资源生命周期。
 - `shmipc.v3_multiplexed_session`：Linux 上通过真实 memfd/SCM_RIGHTS 资源验证 shared→fallback→sticky→ACK→close；非 Linux 明确验证 epoll unsupported。
-- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用真实 C++ helpers 双向传递 slice chain/queue elements；验证两个方向的 v3 版本协商、memfd 资源握手和完整多路 Session 数据面，并在 Linux 验证 v2 握手、单/多 Stream，以及 v2/v3 shared→fallback→sticky→反向 fallback ACK。
+- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用真实 C++ helpers 双向传递 slice chain/queue elements；验证两个方向的 v3 版本协商、memfd 资源握手和完整多路 Session 数据面，并在 Linux 验证 v2/v3 shared→fallback→sticky→反向 fallback ACK，以及两端 Session unhealthy 后拒绝新 Stream、已有 Stream 继续工作。
 - 任一 commit mismatch、缺行、重复/错序事件或字节差异均为失败，不允许自动更新 golden 后绕过评审。
 
 当前 golden 的 SHA-256：

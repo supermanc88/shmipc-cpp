@@ -31,7 +31,8 @@
 | v2 server 单 Session/Stream | 已验证 | Go client ID 2、三消息、双向 close、远端 Debug/ASan、300/300、ASan 50/50、run `32158446306` | 持续回归 |
 | v2 client-originated 多 Stream | 已验证 | ID 2/3/4、并发首包、deadline、queue-full retry/close fallback、错误扇出、双向 Go 100 轮、ASan 20 轮、run `32204938990` | 持续回归 |
 | v2/v3 sticky 数据 fallback | 已验证 | buffer exhaustion、shared→fallback→sticky→ACK、run `32212075730` | 持续回归 |
-| v3 memfd 多路 Session | 部分完成 | C++/固定 Go 双向数据面，本机/远端 18/18、普通 50 轮、ASan 10 轮 | 等待云端门禁；随后补熔断行为 |
+| v3 memfd 多路 Session | 已验证 | C++/固定 Go 双向数据面、run `32223456643` 七项门禁 | 持续回归 |
+| Session fallback breaker | 部分完成 | 固定 30 秒 unhealthy、拒绝新流、恢复/重开单测、v2/v3 Go 双向 50 轮与 ASan 10 轮 | 等待云端门禁 |
 
 ## 产品需求
 
@@ -39,7 +40,7 @@
 |---|---|---|---|
 | `COMP-001` | Go↔C++ v2 双向互通 | 握手、两个方向单 Stream、client-originated 多 Stream、deadline 与错误扇出已由 run `32204938990` 验证 | M3 |
 | `S-0301` | Unix/TCP control transport 与 epoll | 已验证；run `32148166394` 七项门禁成功 | M3 |
-| `COMP-002` | Go↔C++ v3 双向互通 | 版本协商、memfd 握手及多路 shared/fallback/close 数据面已完成本机/远端双向验证 | M4 |
+| `COMP-002` | Go↔C++ v3 双向互通 | 版本协商、memfd 握手及多路 shared/fallback/close 数据面已由 run `32223456643` 验证 | M4 |
 | `PROTO-001` | 控制头、事件、metadata 与 fallback 编解码 | 已验证 | `S-0101` |
 | `PROTO-002` | v2/v3 初始化状态机 | v2/v3 均已完成本机、远端与固定 Go 双向验证 | `S-0302`/`S-0401` |
 | `SHM-001` | Queue/buffer manager/slice 共享布局与映射 | byte layout 与 mapping 已云端验证 | `S-0102..0103`/`S-0201` |
@@ -49,7 +50,7 @@
 | `QUEUE-001` | MPSC queue put/pop | 已云端验证 | `S-0102`/`S-0204` |
 | `QUEUE-002` | working flag 与批量唤醒 | 已云端验证 | `S-0204` |
 | `QUEUE-003` | amd64/arm64 原子对齐 | 两套布局与两架构原子路径已云端验证 | `S-0102`/`S-0204` |
-| `STREAM-001..004` | 多路复用、读写、fallback、关闭 | v2/v3 client-originated 多 Stream 数据面、deadline、sticky fallback 与关闭已验证；熔断拒绝新流待 `S-0404` | M3/M4 |
+| `STREAM-001..004` | 多路复用、读写、fallback、关闭 | v2/v3 多 Stream、deadline、sticky fallback、关闭及 Session breaker 已完成本机/远端验证 | M3/M4 |
 | `API-001` | RAII Session/Stream API | 内部单/多 Stream move-only API 已验证；公共 API 待设计 | M3 |
 | `API-002..003` | Listener/SessionManager/异步 API | 未开始 | M5 |
 | `OPS-001` | 热重启 | 未开始 | M5 |

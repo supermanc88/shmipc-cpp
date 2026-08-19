@@ -148,6 +148,9 @@ bool run_fallback_server(const std::string &host, std::uint16_t port) {
       return false;
     }
   }
+  if (session.value.is_healthy()) {
+    return false;
+  }
   if (!stream.value.send(std::vector<std::uint8_t>{0x7eU})) {
     return false;
   }
@@ -187,6 +190,11 @@ bool run_fallback_client(const std::string &host, std::uint16_t port,
         stream.value.is_fallback() != expect_fallback) {
       return false;
     }
+  }
+  if (session.value.is_healthy() ||
+      session.value.open_stream().status.error !=
+          shmipc::core::V2SessionError::unhealthy) {
+    return false;
   }
   const auto acknowledged = stream.value.receive(5s);
   if (!acknowledged ||

@@ -244,6 +244,13 @@ func TestV3MultiplexedSessionInterop(t *testing.T) {
 			}
 		}
 		if sessionErr == nil {
+			if session.IsHealthy() {
+				sessionErr = fmt.Errorf("Go v3 client remained healthy after fallback")
+			} else if extra, err := session.OpenStream(); extra != nil || err != ErrSessionUnhealthy {
+				sessionErr = fmt.Errorf("Go v3 unhealthy OpenStream = (%v, %v)", extra, err)
+			}
+		}
+		if sessionErr == nil {
 			acknowledgement := make([]byte, 1)
 			if _, err := io.ReadFull(stream, acknowledgement); err != nil {
 				sessionErr = err
@@ -305,10 +312,19 @@ func TestV3MultiplexedSessionInterop(t *testing.T) {
 					sessionErr = fmt.Errorf("C++ v3 fallback payload mismatch at %d", index)
 					break
 				}
-				if stream.inFallbackState != (index != 0) {
+				// Go moves all currently pending slices into recvBuf at once, so a
+				// later fallback may set this before the first payload is returned.
+				if index != 0 && !stream.inFallbackState {
 					sessionErr = fmt.Errorf("Go v3 receive fallback state at %d = %t", index, stream.inFallbackState)
 					break
 				}
+			}
+		}
+		if sessionErr == nil {
+			if session.IsHealthy() {
+				sessionErr = fmt.Errorf("Go v3 server remained healthy after fallback")
+			} else if extra, err := session.OpenStream(); extra != nil || err != ErrSessionUnhealthy {
+				sessionErr = fmt.Errorf("Go v3 server unhealthy OpenStream = (%v, %v)", extra, err)
 			}
 		}
 		if sessionErr == nil {
@@ -835,6 +851,13 @@ func TestV2FallbackInterop(t *testing.T) {
 			}
 		}
 		if sessionErr == nil {
+			if session.IsHealthy() {
+				sessionErr = fmt.Errorf("Go v2 client remained healthy after fallback")
+			} else if extra, err := session.OpenStream(); extra != nil || err != ErrSessionUnhealthy {
+				sessionErr = fmt.Errorf("Go v2 unhealthy OpenStream = (%v, %v)", extra, err)
+			}
+		}
+		if sessionErr == nil {
 			acknowledgement := make([]byte, 1)
 			if _, err := io.ReadFull(stream, acknowledgement); err != nil {
 				sessionErr = err
@@ -897,10 +920,19 @@ func TestV2FallbackInterop(t *testing.T) {
 					sessionErr = fmt.Errorf("C++ fallback payload mismatch at %d", index)
 					break
 				}
-				if stream.inFallbackState != (index != 0) {
+				// Go may batch the later fallback into recvBuf while returning the
+				// first shared payload; only the post-fallback state is mandatory.
+				if index != 0 && !stream.inFallbackState {
 					sessionErr = fmt.Errorf("Go receive fallback state at %d = %t", index, stream.inFallbackState)
 					break
 				}
+			}
+		}
+		if sessionErr == nil {
+			if session.IsHealthy() {
+				sessionErr = fmt.Errorf("Go v2 server remained healthy after fallback")
+			} else if extra, err := session.OpenStream(); extra != nil || err != ErrSessionUnhealthy {
+				sessionErr = fmt.Errorf("Go v2 server unhealthy OpenStream = (%v, %v)", extra, err)
 			}
 		}
 		if sessionErr == nil {

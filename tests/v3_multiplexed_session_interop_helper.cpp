@@ -57,6 +57,9 @@ bool run_server(const std::string& socket_path) {
             return false;
         }
     }
+    if (session.value.is_healthy()) {
+        return false;
+    }
     if (!stream.value.send(std::vector<std::uint8_t>{0x7eU}) ||
         !stream.value.wait_remote_close(5s) || !stream.value.close()) {
         return false;
@@ -92,6 +95,11 @@ bool run_client(const std::string& socket_path, const std::string& queue_name,
             stream.value.is_fallback() != (index != 0U)) {
             return false;
         }
+    }
+    if (session.value.is_healthy() ||
+        session.value.open_stream().status.error !=
+            shmipc::core::V2SessionError::unhealthy) {
+        return false;
     }
     const auto acknowledgement = stream.value.receive(5s);
     if (!acknowledgement ||

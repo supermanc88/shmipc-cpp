@@ -246,18 +246,27 @@
 
 - 状态：已验证；S-0403a 已由提交 `c8d6ade` 和 GitHub Actions run `32212075730` 七项门禁关闭。
 - 触发：`BufferWriter::write_bytes` 返回 `no_buffer` 时回收已取得的 partial chain，将原 payload 编成 FallbackData。其他 buffer 错误仍保留细分错误，queue full 继续 10×10ms 重试并返回 queue/timeout，不触发 fallback。
-- sticky：per-Stream `send_mutex` 串行化判定和写入；一旦本地 buffer 耗尽，后续发送不再尝试共享内存。接收方只有在应用消费 fallback 消息时才同步标记，复现固定 Go `BufferReader` 的切换时点。
+- sticky：per-Stream `send_mutex` 串行化判定和写入；一旦本地 buffer 耗尽，后续发送不再尝试共享内存。C++ 接收方在应用取出 fallback 消息时标记；固定 Go 会把当前全部 pending slices 批量搬入 `recvBuf`，因此后续 fallback 已到达时可能在第一段 shared payload 返回前提前标记，oracle 只约束 fallback 之后必须为 true。
 - 顺序：先前 shared message 的 Polling 和后续 FallbackData 共用有序控制连接，因此 peer callback 先 drain queue 再投递 fallback。每条 Stream 的消息队列保留消息边界。
 - close 边界：fallback frame 在控制连接、close element 在共享队列，两者没有天然跨通道 barrier；运行时压力确认立即 close 可被较早 Polling 批量观察并越过仍在 socket 中的 fallback。数据保序 oracle 使用反向 fallback ACK 确认消费后再关闭，关闭兼容由独立矩阵验证；协议级 end-stream/barrier 留待后续切片明确。
 - 证据：固定 Go `stream.go:205-271`、`protocol_manager.go:153-176`；`src/core/v2_multiplexed_session.cpp`、`tests/v2_multiplexed_session_test.cpp` 与 `TestV2FallbackInterop`。远端普通双向 50 轮、ASan helper 10 轮通过，临时 runtime-debugger 插桩已清理。
 
 ### D-030：v2/v3 复用同一多路数据面，以资源 variant 和运行期版本隔离握手差异
 
-- 状态：已验证；S-0403b 本机/远端与固定 Go 双向 oracle 通过，待云端门禁。
+- 状态：已验证；提交 `4b2c7f1` 的 GitHub Actions run `32223456643` 七项门禁成功。
 - 边界：握手仍由 `v2_client/server_handshake` 和 `v3_client/server_handshake` 分别负责；成功后统一构造 `V2MultiplexedSessionState`，以 `std::variant<V2SharedMemory, V3SharedMemory>` 持有资源，并通过窄转发函数访问 pool/send queue/receive queue。
 - 协议：state 固定保存握手版本，callback 拒绝其他版本；Polling、FallbackData 和 StreamClose 均按该版本编码，防止 v3 资源复用时继续发 v2 header。
 - API：为保持已有内部调用不变，v2 类型和启动函数原样保留；v3 暂以类型别名复用同一 move-only Stream/Session 句柄，并额外返回完整 `V3HandshakeStatus`。公共、版本中性的命名留到 M5 API 设计。
-- 证据：`src/core/v2_multiplexed_session.cpp:68-129,306-338,838-899`、`src/core/v2_multiplexed_session.hpp:168-211`、`tests/v3_multiplexed_session_test.cpp`、`tests/v3_multiplexed_session_interop_helper.cpp` 与 `TestV3MultiplexedSessionInterop`。本机三套 18/18、远端 Debug/ASan 18/18、普通双向 50 轮及 ASan helper 10 轮通过。
+- 证据：`src/core/v2_multiplexed_session.cpp:97-165,332-363,878-940`、`src/core/v2_multiplexed_session.hpp:191-234`、`tests/v3_multiplexed_session_test.cpp`、`tests/v3_multiplexed_session_interop_helper.cpp` 与 `TestV3MultiplexedSessionInterop`。本机三套 18/18、远端 Debug/ASan 18/18、普通双向 50 轮及 ASan helper 10 轮通过；提交 `4b2c7f1` 的 run `32223456643` 七项成功。
+
+### D-031：FallbackData 打开固定 30 秒 Session breaker，期间只拒绝新流
+
+- 状态：已验证；S-0404 本机/远端和固定 Go 双向 oracle 通过，待云端门禁。
+- 触发：成功解码收到的 FallbackData，以及发送端决定走 sticky/no-buffer fallback 时打开 breaker；queue-full StreamClose 不触发。
+- 窗口：首次从 healthy 进入 unhealthy 后固定 30 秒，窗口内重复 fallback 不延长 deadline；到期由 steady clock 判定恢复，恢复后的下一次 fallback 可重新打开。
+- 行为：`is_healthy()` 暴露状态；client `open_stream()` 在分配 ID 前返回 `V2SessionError::unhealthy`。已有 Stream 的 send/receive/close 不受 breaker 阻断。
+- 并发：deadline 使用 seq_cst atomic ticks 和 CAS，不创建 timer 线程，不与 Session/Stream mutex 形成新的锁序。
+- 证据：固定 Go `session.go:230-268,546-558`、`stream.go:256-270`、`protocol_manager.go:153-176`；C++ `src/core/v2_multiplexed_session.hpp:16-34,112-115`、`.cpp:16-38,148-159,513-534,727-747`。本机 Debug/ASan+UBSan/TSan、远端 Debug/ASan 各 18/18，v2/v3 固定 Go 双向普通 50 轮及 ASan helper 10 轮通过。
 
 ## 设计风险与待验证事实
 
@@ -306,6 +315,7 @@
 
 ## 修订历史
 
+- 2026-08-19：`S-0404` 新增 30 秒 Session circuit breaker、`is_healthy()` 与 `unhealthy` 开流错误；v2/v3 固定 Go 双向验证发送端和接收端均拒绝新流且已有 Stream 可继续。压力测试修正了“Go 必须在首个 shared read 后仍非 fallback”的时序假设：`pendingData.moveToWithoutLock` 会批量搬运后续 fallback。影响文档：索引、概要、本文件、core/oracle 目录、多路 Session 文件、关系图、计划、工作流、回归指南和功能矩阵。
 - 2026-08-19：`S-0403b` 将多路 Session state 通用化为 v2 文件/v3 memfd 资源 variant，新增运行期 header version、v3 启动 API、C++ 端到端测试与固定 Go 双向 Session oracle。证据：`src/core/v2_multiplexed_session.*`、`tests/v3_multiplexed_session*`、`tools/go_oracle/control_header_oracle_test.gotxt:181-333`；影响文档：索引、概要、本文件、core/oracle 目录、Session 文件、关系图、计划、回归指南和功能矩阵。
 
 - 2026-08-18：基于上游 commit `55c241e` 建立初始架构分析、验证平台基线并识别布局风险。
