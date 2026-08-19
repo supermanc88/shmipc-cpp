@@ -22,6 +22,7 @@ include(ShmipcProjectOptions)
 
 add_library(
     shmipc
+    src/core/protocol_version_negotiation.cpp
     src/core/v2_client_session.cpp
     src/core/v2_handshake.cpp
     src/core/v2_multiplexed_session.cpp

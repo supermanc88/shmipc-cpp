@@ -223,6 +223,16 @@
 - 生命周期：本地 close 后保留 state 供 remote close/Session failure 等待，句柄释放时从 route map 删除；remote close 保留 half-closed state 供消息排空。Session 断开先把原始 failure 扇出到所有 Stream，再清空 route/accept queue。
 - 证据：满 8-slot queue 的立即 write timeout、25ms 后释放槽并重试成功、满队列控制 close、满队列 send 被并发 close 中断、阻塞 read deadline 更新及两个 Stream/Accept 同时被 Session close 唤醒；本地普通 100 轮与 ASan+UBSan/TSan，远端 Debug 专项 100 轮及 ASan 通过。
 
+### D-027：v3 版本协商必须保留 client/server 首帧角色差异
+
+- 状态：已验证；本机及远端门禁通过，等待云端提交验证
+- wire：协商只使用 8 字节 header，type 为 `ExchangeProtoVersion(4)`；client 宣告最高版本 3，server 始终回复自身最高版本 3，最终版本由 client 取较小值。
+- client：peer maximum 2 是合法降级，未来版本大于 3 时仍选择 3；低于 2 返回 unsupported。协商结果同时保留 peer/selected，后续初始化据此分流。
+- server：固定 Go 在读取首帧后先按 header version 创建 initializer，因此只有 version 3 的 Exchange 帧能进入协商；version 2 Exchange 会被 v2 initializer 当作错误首事件，不能用对称的 `min()` 逻辑接受。
+- 安全边界：上游 `blockReadEventHeader` 不核对 length，但本项目 `PROTO-001` 要求异常 length 安全拒绝，故双角色都要求 header-only frame 的 length 精确为 8。
+- 模块边界：协商 API 借用 blocking socket，不创建/映射共享内存，不收发 FD；S-0402 依据 selected version 3 才进入 SCM_RIGHTS。
+- 证据：固定 Go `protocol_manager.go:75-117,179-184`、`protocol_initializer.go:75-120`；C++ 单元异常矩阵，本机 Debug/ASan+UBSan/TSan 16/16、oracle 17/17；远端 GCC 8.5 Debug/ASan 16/16、双向 Go oracle 20 轮。
+
 ## 设计风险与待验证事实
 
 ### R-001：共享内存使用本机字节序和手工 offset
@@ -302,3 +312,4 @@
 - 2026-08-19：提交 `0347f34` 的 GitHub Actions run `32158446306` 七项作业及关键步骤全部成功，GCC/Clang Debug/Release 的安装验证实际执行，Go protocol oracle 为 15/15；`S-0304` 正式关闭。影响文档：索引、概要、本文件、root/core/oracle 目录、server session 文件、项目工作流、移植计划和功能矩阵。
 - 2026-08-19：`S-0305` 源码追踪证伪“奇偶 Stream ID”注释假设；固定 Go 实现按 1 递增且只支持 client-originated Open→server Accept。计划改为连续 ID 与单向开流兼容矩阵。影响文档：本文件、移植计划。
 - 2026-08-19：提交 `78913e6` 的 GitHub Actions run `32204938990` 中 GCC/Clang Debug/Release、ASan+UBSan、TSan 与 Go protocol oracle 七项作业全部成功；oracle CTest 16/16，`S-0305a/b` 与 M3 正式关闭。影响文档：索引、本文件、core/oracle 目录、项目计划、工作流和功能矩阵。
+- 2026-08-19：`S-0401` 新增独立 v3 版本协商状态机，固化 client 可降级、server 仅接受 v3 首帧的非对称语义；本机三套 sanitizer、固定 Go oracle 17/17、远端 GCC 8.5 Debug/ASan 16/16及双向互操作 20 轮通过，等待云端门禁。影响文档：索引、本文件、core/oracle 目录、版本协商文件、项目计划和回归指南。

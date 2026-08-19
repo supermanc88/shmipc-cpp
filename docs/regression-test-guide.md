@@ -46,7 +46,7 @@ ssh 23.2 '
 '
 ```
 
-远端尚无 Go，因此默认只执行 C++ tests。需要运行 Linux-only v2 oracle 时，可由 runner 交叉编译带 overlay 的测试二进制：
+远端尚无 Go，因此默认只执行 C++ tests。需要运行 Linux-only v2/v3 oracle 时，可由 runner 交叉编译带 overlay 的测试二进制：
 
 ```bash
 SHMIPC_GO_ORACLE_COMPILE_LINUX_AMD64="$PWD/build/v2-oracle-linux-amd64" \
@@ -56,6 +56,7 @@ rsync -az --no-times --omit-dir-times build/v2-oracle-linux-amd64 \
 ssh 23.2 'cd /home/chm/shmipc-cpp && \
   SHMIPC_CPP_V2_HANDSHAKE_HELPER=$PWD/build/debug/tests/shmipc_v2_handshake_interop_helper \
   SHMIPC_CPP_V2_SERVER_SESSION_HELPER=$PWD/build/debug/tests/shmipc_v2_server_session_interop_helper \
+  SHMIPC_CPP_PROTOCOL_VERSION_NEGOTIATION_HELPER=$PWD/build/debug/tests/shmipc_protocol_version_negotiation_interop_helper \
   ./build/v2-oracle-linux-amd64 -test.run "^TestV2HandshakeInterop$" -test.v'
 ```
 
@@ -73,10 +74,11 @@ ssh 23.2 'cd /home/chm/shmipc-cpp && \
 - `shmipc.control_socket`：adopt/move ownership、partial exact IO、EOF/would-block、真实 loopback TCP、pathname Unix socket、重复 bind 与路径清理。
 - `shmipc.epoll_dispatcher`：Linux 上验证 ET partial frame 保留、writev、EAGAIN 背压、并发写无交错、remote/local/shutdown close、buffer/callback 错误与重入 close；非 Linux 明确验证 unsupported。
 - `shmipc.v2_handshake`：验证 client/server 成功初始化、queue 方向翻转、两角色 buffer 分配回收、错误版本/事件、截断 body、缺失路径、重复文件保护与失败清理。
+- `shmipc.protocol_version_negotiation`：验证 v3 双角色成功、client v2 降级/未来版本选择、server 首帧角色差异，以及错误 length/type/magic、低版本、EOF 和无效 socket。
 - `shmipc.v2_client_session`：Linux 上验证单 Stream 20,000→17,000 字节跨 slice round-trip、receive timeout、Polling 和双向 queue close；非 Linux 明确验证 epoll unsupported。
 - `shmipc.v2_server_session`：Linux 上验证动态绑定远端 Stream ID 2、三消息批量 Polling、跨 slice、timeout 与双向 queue close；非 Linux 明确验证 epoll unsupported。
 - `shmipc.v2_multiplexed_session`：Linux 上验证 client ID 2/3/4、并发首包、server Accept、独立双向消息、persistent deadline、queue-full retry/close fallback、并发 send/close、Session failure 扇出、无 ACK close 的两个主动关闭方向与 Stream/Session 资源生命周期。
-- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用真实 C++ helpers 双向传递 slice chain/queue elements，在 Linux 验证两个方向的 v2 握手，以及 C++ client/server 两个方向的单 Stream 和 3 Stream 数据与关闭。
+- `shmipc.go_protocol_oracle`：除控制协议与布局外，调用真实 C++ helpers 双向传递 slice chain/queue elements，验证两个方向的 v3 版本协商，并在 Linux 验证两个方向的 v2 握手，以及 C++ client/server 两个方向的单 Stream 和 3 Stream 数据与关闭。
 - 任一 commit mismatch、缺行、重复/错序事件或字节差异均为失败，不允许自动更新 golden 后绕过评审。
 
 当前 golden 的 SHA-256：

@@ -19,6 +19,81 @@ import (
 	"unsafe"
 )
 
+func TestProtocolVersionNegotiationInterop(t *testing.T) {
+	helper := os.Getenv("SHMIPC_CPP_PROTOCOL_VERSION_NEGOTIATION_HELPER")
+	if helper == "" {
+		t.Fatal("SHMIPC_CPP_PROTOCOL_VERSION_NEGOTIATION_HELPER is not set")
+	}
+
+	run := func(t *testing.T, role string, exchange func(net.Conn) error) {
+		t.Helper()
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer listener.Close()
+		port := listener.Addr().(*net.TCPAddr).Port
+		command := exec.Command(helper, role, "127.0.0.1", strconv.Itoa(port))
+		var output bytes.Buffer
+		command.Stdout = &output
+		command.Stderr = &output
+		if err := command.Start(); err != nil {
+			t.Fatal(err)
+		}
+		connection, err := listener.Accept()
+		if err != nil {
+			command.Process.Kill()
+			t.Fatal(err)
+		}
+		exchangeErr := exchange(connection)
+		connection.Close()
+		helperErr := command.Wait()
+		if exchangeErr != nil || helperErr != nil {
+			t.Fatalf("Go exchange=%v C++ helper=%v output=%s", exchangeErr, helperErr, output.String())
+		}
+	}
+
+	t.Run("GoClientToCppServer", func(t *testing.T) {
+		run(t, "server", func(connection net.Conn) error {
+			request := header(make([]byte, headerSize))
+			request.encode(headerSize, maxSupportProtoVersion, typeExchangeProtoVersion)
+			if _, err := connection.Write(request); err != nil {
+				return err
+			}
+			response := header(make([]byte, headerSize))
+			if _, err := io.ReadFull(connection, response); err != nil {
+				return err
+			}
+			if err := checkEventValid(response); err != nil {
+				return err
+			}
+			if response.Length() != headerSize || response.Version() != maxSupportProtoVersion || response.MsgType() != typeExchangeProtoVersion {
+				return fmt.Errorf("unexpected C++ response: %s", response.String())
+			}
+			return nil
+		})
+	})
+
+	t.Run("CppClientToGoServer", func(t *testing.T) {
+		run(t, "client", func(connection net.Conn) error {
+			request := header(make([]byte, headerSize))
+			if _, err := io.ReadFull(connection, request); err != nil {
+				return err
+			}
+			if err := checkEventValid(request); err != nil {
+				return err
+			}
+			if request.Length() != headerSize || request.Version() != maxSupportProtoVersion || request.MsgType() != typeExchangeProtoVersion {
+				return fmt.Errorf("unexpected C++ request: %s", request.String())
+			}
+			response := header(make([]byte, headerSize))
+			response.encode(headerSize, maxSupportProtoVersion, typeExchangeProtoVersion)
+			_, err := connection.Write(response)
+			return err
+		})
+	})
+}
+
 func TestV2HandshakeInterop(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("full shmipc Session initialization requires Linux")

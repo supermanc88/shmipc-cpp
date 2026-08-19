@@ -2,7 +2,7 @@
 
 ## Summary
 
-以不修改 submodule 的方式运行固定 Go 参考实现内部 oracle，锁定控制协议、queue/buffer 布局、角色 counter 行为，并驱动生产 BufferWriter/Reader、SharedQueue、v2 handshake、单 Stream 与多 Stream Session helpers 验证互操作。
+以不修改 submodule 的方式运行固定 Go 参考实现内部 oracle，锁定控制协议、queue/buffer 布局、角色 counter 行为，并驱动生产 BufferWriter/Reader、SharedQueue、v2 handshake、v3 版本协商、单 Stream 与多 Stream Session helpers 验证互操作。
 
 ## Directory Contents
 
@@ -24,6 +24,7 @@
 - `tests/buffer_pool_interop_helper.cpp:18-85` 是 oracle 的 C++ 创建/验证端；创建方向使用 BufferWriter，验证方向用 BufferReader 的跨片 owned-copy 路径，临时共享文件由 Go test 的 `t.TempDir()` 隔离清理。
 - `control_header_oracle_test.gotxt:116-163` 与 `tests/shared_queue_interop_helper.cpp:14-64` 双向传递各 1,000 个 queue elements，并验证方向翻转和 working flag。
 - `TestV2HandshakeInterop` 在 Linux 启动真实 Go `newSession` 与 C++ helper，分别验证 Go client→C++ server 和 C++ client→Go server；helper 以 mapping signal 保持 creator 生命周期，避免测试端过早断开。
+- `TestProtocolVersionNegotiationInterop` 直接使用固定 Go `header.encode/checkEventValid`，双向验证 C++ client/server 的 8 字节 v3 offer/response；远端 Linux 连续 20 轮通过。
 - `TestV2ClientSessionInterop` 在 Linux 以真实 Go server `AcceptStream/Read/Write/Close` 验证 C++ client 的 20,000→17,000 字节共享内存双向数据和关闭路径。
 - `TestV2ServerSessionInterop` 在 Linux 以真实 Go client 首个 Stream ID 2 验证 C++ server 的三消息双向数据；独立子场景分别验证 C++ 与 Go 主动关闭。
 - `TestV2MultiplexedSessionInterop` 在 Linux 双向验证 3 个连续 Stream：Go client→C++ server 与 C++ client→Go server 均检查 ID 2/3/4、跨 slice request/response 和主动关闭同步；远端普通 100 轮、ASan helper 20 轮通过。

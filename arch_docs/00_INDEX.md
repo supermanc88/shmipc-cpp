@@ -24,6 +24,7 @@
 - [files/src__core__v2_client_session.hpp.md](files/src__core__v2_client_session.hpp.md)：v2 client 单 Session/Stream 数据路径
 - [files/src__core__v2_server_session.hpp.md](files/src__core__v2_server_session.hpp.md)：v2 server 动态绑定单 Stream 数据路径
 - [files/src__core__v2_multiplexed_session.hpp.md](files/src__core__v2_multiplexed_session.hpp.md)：v2 多路 Session 路由与独立 Stream 状态
+- [files/src__core__protocol_version_negotiation.hpp.md](files/src__core__protocol_version_negotiation.hpp.md)：v3 版本协商角色状态、降级结果与错误模型
 - [dirs/third_party__shmipc-go.md](dirs/third_party__shmipc-go.md)：Go 参考实现文件映射
 - [files/third_party__shmipc-go__const.go.md](files/third_party__shmipc-go__const.go.md)：协议与布局常量
 - [files/third_party__shmipc-go__protocol_event.go.md](files/third_party__shmipc-go__protocol_event.go.md)：控制协议事件格式
@@ -42,7 +43,7 @@
 | `docs/` | [移植计划](../docs/SHMIPC_CPP_PORTING_PLAN.md)、[项目工作流](../docs/PROJECT_WORKFLOW.md) | ✅ | #plan #workflow | 需求、里程碑、门禁与远程验证流程 |
 | `include/shmipc/` | [dirs/root.md](dirs/root.md) | ✅ | #public-api | 公共 C++ 头文件入口 |
 | `src/` | [dirs/root.md](dirs/root.md) | ✅ | #implementation | C++ 库实现入口 |
-| `src/core/` | [dirs/src__core.md](dirs/src__core.md) | ✅ | #handshake #v2 #interop | v2 文件路径握手已完成本机与远端双向验证 |
+| `src/core/` | [dirs/src__core.md](dirs/src__core.md) | ✅ | #handshake #v2 #v3 #interop | v2 文件路径握手及独立 v3 版本协商已完成本机与远端双向验证 |
 | `src/protocol/` | [dirs/src__protocol.md](dirs/src__protocol.md) | ✅ | #protocol #codec #safety | header、metadata 与 fallback 生产编解码 |
 | `src/shm/` | [dirs/src__shm.md](dirs/src__shm.md) | ✅ | #shared-memory #layout #mmap #zero-copy | 显式布局、mapping、pool、queue 与 Buffer IO |
 | `src/transport/` | [dirs/src__transport.md](dirs/src__transport.md) | ✅ | #transport #socket #epoll | Unix/TCP 基础层与 Linux epoll dispatcher 已完成本机/远端验证 |
@@ -83,6 +84,8 @@
 | `src/transport/epoll_dispatcher.cpp` | ✅ | #linux #epoll #backpressure | ET 读、EPOLLOUT 等待、eventfd 停止与关闭串行化 |
 | `src/core/v2_handshake.hpp` | ✅ | #handshake #ownership #errors | v2 配置、结果与 move-only 共享资源聚合 |
 | `src/core/v2_handshake.cpp` | ✅ | #handshake #metadata #mapping | client 创建/发送与 server 接收/映射状态机 |
+| `src/core/protocol_version_negotiation.hpp` | ✅ | #handshake #v3 #version | 双角色协商结果、降级语义与细分错误接口 |
+| `src/core/protocol_version_negotiation.cpp` | ✅ | #handshake #v3 #interop | 8 字节 ExchangeProtoVersion 阻塞状态机 |
 | `src/core/v2_client_session.hpp` | ✅ | #session #stream #errors | 单 client Session/Stream API 与错误模型 |
 | `src/core/v2_client_session.cpp` | ✅ | #epoll #queue #buffer | Polling、消息收发、timeout 与 close 状态机 |
 | `src/core/v2_server_session.hpp` | ✅ | #server #session #stream | 首个远端 Stream 动态绑定与服务端 API |
@@ -100,6 +103,8 @@
 | `tests/epoll_dispatcher_test.cpp` | ✅ | #test #linux #concurrency | partial frame、背压、并发写、callback/close 与资源上限 |
 | `tests/v2_handshake_test.cpp` | ✅ | #test #handshake #cleanup | v2 成功、方向、错误帧、mapping 与事务清理 |
 | `tests/v2_handshake_interop_helper.cpp` | ✅ | #test #interop #v2 | 固定 Go oracle 调用的双向握手 helper |
+| `tests/protocol_version_negotiation_test.cpp` | ✅ | #test #handshake #v3 | 协商成功、降级、未来版本与异常帧矩阵 |
+| `tests/protocol_version_negotiation_interop_helper.cpp` | ✅ | #test #interop #v3 | 固定 Go oracle 调用的双向版本协商 helper |
 | `tests/v2_client_session_test.cpp` | ✅ | #test #session #roundtrip | 单 Stream 跨 slice 双向消息、timeout 与 close |
 | `tests/v2_client_session_interop_helper.cpp` | ✅ | #test #interop #stream | C++ client→真实 Go server helper |
 | `tests/buffer_pool_interop_helper.cpp` | ✅ | #test #interop #chain | Go oracle 调用的 C++ 双向 chain helper |
@@ -131,6 +136,7 @@
 |---|---|---|
 | v2 `/dev/shm` 握手 | `src/core/v2_handshake.*`, `protocol_initializer.go`, `protocol_manager.go` | `COMP-001`, `PROTO-002` |
 | 控制协议 codec 与 golden/oracle | `src/protocol/`, `tools/go_oracle/`, `tests/data/golden/` | `PROTO-001` |
+| v3 版本协商 | `src/core/protocol_version_negotiation.*`, `protocol_initializer.go`, `protocol_manager.go` | `COMP-002`, `PROTO-002` |
 | v3 `memfd` + SCM_RIGHTS | `protocol_initializer.go`, `protocol_manager.go`, `block_io.go` | `COMP-002`, `PLAT-002` |
 | 共享内存分配与回收 | `buffer_manager.go`, `buffer_slice.go`, `buffer.go` | `SHM-001..004` |
 | C++ buffer layout 与损坏链验证 | `src/shm/buffer_layout.*`, `tests/data/golden/buffer_layout.txt`, `tests/data/corpus/layout_corruption.txt` | `SHM-001`, `SHM-004` |
@@ -153,8 +159,9 @@
 
 - 已完成：上游架构分析、M0、M1、M2，以及 M3 `S-0301..0304`；提交 `0347f34` 的 run `32158446306` 七项门禁全部成功，Go protocol oracle 为 15/15。
 - 已完成：`S-0305a/b` 多 Stream、deadline、queue-full retry/close fallback、路由回收和 Session 错误扇出已通过提交 `78913e6` 的云端七项门禁，M3 正式关闭。
+- 已完成：`S-0401` 独立 v3 版本协商状态机及固定 Go 双向 oracle；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 16/16，远端双向互操作连续 20 轮通过，等待云端门禁。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
-- 待验证：共享内存耗尽的数据 fallback、v3 与更完整的异常注入矩阵。多 Stream 两个角色及 deadline/关闭/Session 断开已完成本机、远端和云端验证。
+- 待验证：v3 SCM_RIGHTS/memfd 资源初始化、共享内存耗尽的数据 fallback 与更完整的异常注入矩阵。版本协商、多 Stream 两个角色及 deadline/关闭/Session 断开已完成本机和远端验证。
 
 ## 状态标记
 
