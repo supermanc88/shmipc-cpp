@@ -140,6 +140,14 @@ shmipc_apply_project_options(shmipc_v3_multiplexed_session_test)
 add_test(NAME shmipc.v3_multiplexed_session
          COMMAND shmipc_v3_multiplexed_session_test)
 
+add_executable(shmipc_public_session_test public_session_test.cpp)
+target_link_libraries(shmipc_public_session_test
+                      PRIVATE shmipc::shmipc Threads::Threads)
+target_include_directories(shmipc_public_session_test
+                           PRIVATE ${PROJECT_SOURCE_DIR}/src)
+shmipc_apply_project_options(shmipc_public_session_test)
+add_test(NAME shmipc.public_session COMMAND shmipc_public_session_test)
+
 add_executable(shmipc_buffer_pool_interop_helper buffer_pool_interop_helper.cpp)
 target_link_libraries(shmipc_buffer_pool_interop_helper PRIVATE shmipc::shmipc)
 target_include_directories(shmipc_buffer_pool_interop_helper PRIVATE ${PROJECT_SOURCE_DIR}/src)

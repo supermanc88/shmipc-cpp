@@ -114,6 +114,7 @@
 
 - Go 参考实现构建入口：`go.mod`，Go 1.20。
 - C++ 构建入口：根目录 `CMakeLists.txt`，最低 CMake 3.16、C++17；产物 target 为 `shmipc`/`shmipc::shmipc`，支持 CTest、install/export 及 `find_package(shmipc)` package 配置。
+- C++ 公共同步 client 入口：`include/shmipc/session.hpp`。`connect_tcp/connect_unix` 返回 move-only `Session`，由其独占 event-loop thread 并创建 move-only `Stream`；PImpl 隔离所有 v2/v3、transport、queue 与 pool 内部类型。
 - C++ 质量入口：`SHMIPC_WARNINGS_AS_ERRORS`、`SHMIPC_ENABLE_ASAN`、`SHMIPC_ENABLE_UBSAN`、`SHMIPC_ENABLE_TSAN`；ASan 与 TSan 在配置阶段互斥。
 - C++ 控制协议入口：`src/protocol/control_codec.hpp`。当前提供 header、事件 0..9、v2/v3 metadata 与 fallback 的大端编解码；以明确错误分类拒绝截断、非法字段、错误事件、尾随字节和超过默认 64 MiB 上限的帧。该接口暂为内部 API。
 - C++ v2 握手入口：`src/core/v2_handshake.hpp`。client 创建 buffer/双 queue 并发送路径 metadata，server 反向映射 queue 视图；成功后 socket 保留给后续 Session/epoll，失败时 creator 文件由 RAII 清理。
@@ -127,7 +128,7 @@
 - C++ Buffer IO 入口：`src/shm/buffer_io.hpp`。Writer 复现 Go 的最大档位连续分配策略并发布 chain；Reader 对单片返回 pinned 借用 view、对跨片返回 owned copy，`release_previous_read` 与 RAII 析构负责回收。
 - C++ control transport 入口：`src/transport/control_socket.hpp` 与 `epoll_dispatcher.hpp`。握手期使用 move-only Unix/TCP socket、exact blocking IO 和 Linux SCM_RIGHTS；事件期切换 nonblocking edge-triggered epoll，以消费式缓冲 callback、串行写和 eventfd 停止管理连接。
 - Go oracle 入口：`go run tools/go_oracle/run_control_header_oracle.go`；严格校验 submodule commit 后，以 overlay 调用上游 header、metadata 与 fallback 编码器核对三份 golden。CMake 可通过 `SHMIPC_ENABLE_GO_ORACLE_TESTS=ON` 将其加入 CTest。
-- C++ CI 入口：`.github/workflows/ci.yml`。Ubuntu 24.04 上运行 GCC/Clang × Debug/Release 四项构建、CTest 和安装；另以 GCC 分别运行 ASan+UBSan 与 TSan，并以 Go 1.25.10 运行协议/数据平面 oracle。
+- C++ CI 入口：`.github/workflows/ci.yml`。Ubuntu 24.04 上运行 GCC/Clang × Debug/Release 四项构建、CTest、安装和独立 `find_package` 消费者；另以 GCC 分别运行 ASan+UBSan 与 TSan，并以 Go 1.25.10 运行协议/数据平面 oracle。
 - 本地测试：`go test ./...`；上游测试实际依赖 Linux，macOS 不构成有效通过环境。
 - Linux 交叉编译基线：`GOOS=linux GOARCH=amd64 go test -c .` 已在 2026-08-18 成功。
 - 远程执行环境：SSH 别名 `23.2`（`root@10.210.23.2`），工作目录 `/home/chm/shmipc-cpp`；Kylin Linux Advanced Server V10、kernel `4.19.90-20.0stable.x86_64`、x86_64。
@@ -155,6 +156,8 @@
 - `S-0403b` 验证：同一多路数据面以 `V2SharedMemory/V3SharedMemory` variant 和运行期协议版本同时服务 v2 文件与 v3 memfd；C++ v3 端到端测试及固定 Go 双向 Session oracle 覆盖 shared→fallback→sticky→ACK→close。本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 18/18，普通互操作 50 轮、ASan helper 10 轮通过。
 - `S-0403b` 云端验证：提交 `4b2c7f1` 的 GitHub Actions run `32223456643` 七项作业全部成功，Go protocol oracle 完整执行 v3 多路 Session 双向数据面。
 - `S-0404` 验证：发送或接收 FallbackData 打开 Session 级 30 秒 breaker，窗口内 `OpenStream` 返回 `unhealthy`，已有 Stream 继续工作；重复触发不延长当前窗口，到期后可恢复并再次打开。本机/远端完整门禁及固定 Go v2/v3 双向普通 50 轮、ASan helper 10 轮通过。
+- `S-0404` 云端验证：提交 `39937bd` 的 GitHub Actions run `32329216783` 七项作业全部成功，M4 正式关闭。
+- `S-0501` 验证：`tests/public_session_test.cpp` 在 Linux 实际覆盖 TCP/file v2 与 Unix/memfd v3 的 connect/open/send/receive/close；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 19/19，macOS/Linux 安装后独立消费者均通过，待云端门禁。
 - 时钟注意：本机当前比远端快约 2 分 20 秒；同步时不得保留本机文件时间戳，否则 Ninja 会反复重新生成。标准命令见 `PROJECT_WORKFLOW.md`。
 - Linux 运行基线：本机用 Go 1.25.10 交叉编译固定提交的 amd64 测试二进制，rsync 至远端后完整测试 `PASS`、退出码 0；覆盖 v2、v3/memfd、队列、Stream/Session 和热重启路径。
 - CI：`.github/workflows/tests.yaml` 在 Ubuntu 运行单测/benchmark，并在自托管 Linux 上覆盖 Go 1.21–1.25；`.github/workflows/pre_check.yaml` 运行许可证、拼写和 golangci-lint。

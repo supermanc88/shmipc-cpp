@@ -2,7 +2,7 @@
 
 ## Summary
 
-当前仓库已建立 C++17/CMake 可验证骨架，并已加入控制协议 codec、共享布局、RAII mapping、跨进程原子 buffer pool、零拷贝 Buffer IO、MPSC queue，以及 Unix/TCP control socket 与 Linux epoll 事件层。
+当前仓库已建立 C++17/CMake 可安装库，并已加入控制协议 codec、共享布局、RAII mapping、跨进程原子 buffer pool、零拷贝 Buffer IO、MPSC queue、Unix/TCP control socket、Linux epoll 事件层，以及版本无关的 RAII client Session/Stream 公共 API。
 
 ## Directory Contents（深度=1）
 
@@ -10,13 +10,14 @@
 |---|---|---|---|
 | `.github/workflows/` | 目录 | ✅ | Ubuntu Linux 编译、测试、安装与 Sanitizer CI |
 | `.gitmodules` | 文件 | ✅ | 声明 `third_party/shmipc-go` 子模块 |
-| `CMakeLists.txt` | 文件 | ✅ | 顶层工程、library/test、安装与 package export |
+| `CMakeLists.txt` | 文件 | ✅ | 顶层工程、library/test/example、Threads 依赖、安装与 package export |
 | `README.md` | 文件 | ✅ | 项目定位和唯一构建入口 |
 | `arch_docs/` | 目录 | ✅ | 架构分析与证据索引 |
 | `cmake/` | 目录 | ✅ | 工程选项与 package config 模板 |
 | `docs/` | 目录 | ✅ | C++ 移植计划与项目标准工作流 |
-| `include/shmipc/` | 目录 | ✅ | 公共 C++ API；当前为版本接口 |
-| `src/` | 目录 | ✅ | library 实现；包含版本、protocol、shared-memory 与 transport 模块 |
+| `examples/` | 目录 | ✅ | 公共同步 client 示例 |
+| `include/shmipc/` | 目录 | ✅ | 公共 C++ API；版本及 move-only Session/Stream |
+| `src/` | 目录 | ✅ | library 实现；包含公共 PImpl adapter、protocol、shared-memory 与 transport 模块 |
 | `tests/` | 目录 | ✅ | CTest 测试 target |
 | `third_party/` | 目录 | ✅ | 上游参考实现聚合目录 |
 | `tools/` | 目录 | ✅ | Go oracle 等开发验证工具 |
@@ -49,10 +50,12 @@
 - `src/core/v2_client_session.*` 将 v2 client 资源移交 epoll，以固定 Stream ID 1 完成 buffer/queue 消息收发、Polling、timeout 与 close；真实 Go server、远端 Debug/ASan/50 轮及提交 `050d7da` 的 run `32154121843` 七项门禁通过。
 - `src/core/v2_server_session.hpp` 与共享 Session 状态实现 Go client→C++ server 的首个 Stream ID 动态绑定、多消息和关闭；远端 Debug/ASan、普通互操作 300/300、ASan 50/50 及提交 `0347f34` 的 run `32158446306` 七项门禁通过。
 - `map_buffer_pool` 允许无 ACK 握手期间 creator 已有活动 allocation，映射期校验稳定布局和动态 offset 边界，slice/chain 由运行期操作严格校验。
+- `include/shmipc/session.hpp:13-170` 与 `src/session.cpp:121-369` 建立不泄露内部类型的公共 RAII client API；Linux v2/v3 集成、Sanitizer 和安装消费 smoke 均通过。
+- `CMakeLists.txt:12-81` 将 `Threads::Threads` 作为 public 依赖并构建同步示例；`.github/workflows/ci.yml:47-53` 在安装后构建独立 package consumer。
 
 ## Guesses & Uncertainties
 
-- 当前产物为静态库；最终是否同时发布动态库、依赖策略和完整公共 API 仍待确认。
+- 当前产物为静态库；最终是否同时发布动态库以及 ABI 稳定级别仍待确认。client 同步公共 API 已完成，server/异步/SessionManager 仍属于 M5 后续切片。
 - 推荐目录和里程碑见 [移植计划](../../docs/SHMIPC_CPP_PORTING_PLAN.md)。
 - 远程 Linux 同步、构建和测试见 [项目工作流](../../docs/PROJECT_WORKFLOW.md)。
 

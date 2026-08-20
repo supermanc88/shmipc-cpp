@@ -1,0 +1,3 @@
+add_executable(shmipc_synchronous_client synchronous_client.cpp)
+target_link_libraries(shmipc_synchronous_client PRIVATE shmipc::shmipc)
+shmipc_apply_project_options(shmipc_synchronous_client)

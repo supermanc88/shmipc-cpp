@@ -4,8 +4,9 @@
 
 ```mermaid
 graph TD
-  consumer["consumer / version_test.cpp"]
-  public["include/shmipc/version.hpp"]
+  consumer["consumer / examples / public tests"]
+  public["include/shmipc/version.hpp + session.hpp"]
+  public_impl["src/session.cpp PImpl adapter"]
   library["shmipc library"]
   implementation["src/version.cpp"]
   package["shmipcConfig.cmake / shmipcTargets.cmake"]
@@ -41,7 +42,11 @@ graph TD
   consumer -- includes --> public
   consumer -- links --> library
   implementation -- implements --> public
+  public_impl -- implements --> public
+  public_impl -- owns --> dispatcher
+  public_impl -- delegates --> multiplexed_session
   library -- contains --> implementation
+  library -- contains --> public_impl
   package -- exports --> library
   ci -- configures/builds/tests/installs --> library
   runner -- overlays/calls --> upstream

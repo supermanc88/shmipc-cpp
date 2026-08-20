@@ -6,7 +6,7 @@
 |---|---|
 | 项目类型 | Go 到 C++ 的跨语言、跨运行时重实现 |
 | 参考实现 | `third_party/shmipc-go` commit `55c241eea321071278d1ee7f7c46292d23e50a5b` |
-| 当前阶段 | M2、M3 已完成；M4 `S-0401..0403b` 已关闭，`S-0404` Session breaker 已完成本机/远端验证 |
+| 当前阶段 | M2、M3、M4 已完成；M5 `S-0501` 公共同步 client API 已完成本机/远端验证，待云端门禁 |
 | 已确认目标 | 在 Linux 上提供现代 C++ 共享内存 IPC 库，并与固定 Go 实现双向互通；Go 仅用于开发验收 |
 | 流程依据 | 用户提供的《软件项目端到端标准工作流程》 |
 | 架构依据 | [上游架构概要](../arch_docs/01_OVERVIEW.md) 与 [决策/风险](../arch_docs/02_DECISIONS.md) |
@@ -200,7 +200,9 @@ tools/
 - `S-0402`（已验证）：SCM_RIGHTS 两个 FD、ACK 时序、完整 memfd mapping、ownership 与异常回滚；提交 `568817c` 的 run `32209295664` 七项门禁通过。
 - `S-0403a`（已完成；提交 `c8d6ade`、run `32212075730`）：共享 buffer 耗尽触发数据 fallback、接收处理与 per-Stream sticky ordering；queue full 明确不触发 fallback。
 - `S-0403b`（已完成；提交 `4b2c7f1`、run `32223456643`）：抽取版本无关多路数据面并接入 `V3SharedMemory`，完成真实 v3 Session 的 shared/fallback/close 双向互通。
-- `S-0404`（已完成本机/远端验证，待云端门禁）：发送/接收 fallback 打开固定 30 秒 Session breaker，期间拒绝新 Stream，到期自动恢复，已有 Stream 保持可用。
+- `S-0404`（已验证；提交 `39937bd`、run `32329216783`）：发送/接收 fallback 打开固定 30 秒 Session breaker，期间拒绝新 Stream，到期自动恢复，已有 Stream 保持可用。
+
+状态：**已完成**。`COMP-002`、`STREAM-003` 及完整 v3/fallback/breaker 矩阵已通过云端七项门禁。
 
 退出条件：`COMP-002`、`STREAM-003` 完成；正常/异常握手和 fallback 双向互通。
 
@@ -208,7 +210,7 @@ tools/
 
 切片：
 
-- `S-0501`：稳定 RAII Session/Stream API 和同步示例。
+- `S-0501`（已完成本机/远端验证，待云端门禁）：版本无关 move-only RAII client Session/Stream、稳定错误分类、file/memfd 配置、同步示例及 install 后独立消费者。
 - `S-0502`：异步 callback executor、callback 内 Close 和销毁等待。
 - `S-0503`：Listener 与兼容连接适配。
 - `S-0504`：SessionManager、round-robin、Stream pool、断线重建。
@@ -322,10 +324,11 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-M4-003`：多路 Stream 在 BufferWriter `no_buffer` 时发送 FallbackData 并永久保持 socket 路径；接收应用消费 fallback 后同步切换，queue full timeout 保持非 fallback。C++ 单元验证 1 KiB shared→128 KiB fallback→257 B sticky；固定 Go 双向以 1 MiB pool、2 MiB fallback 和反向 fallback ACK 验证，远端普通 50 轮、ASan helper 10 轮通过。
 - `E-M4-004`：多路 Session state 以 `V2SharedMemory/V3SharedMemory` variant 复用 pool/queue 数据面并保存运行期协议版本；v3 client/server 启动入口接入完整 memfd handshake，所有 Polling/FallbackData/StreamClose 使用 version 3。C++ 与固定 Go 两方向均完成 shared→fallback→sticky→ACK→close；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 18/18，普通互操作 50 轮、ASan helper 10 轮通过。
 - `E-M4-005`：Session breaker 在发送/接收 FallbackData 时首次打开固定 30 秒 unhealthy 窗口，重复触发不延长，到期可恢复并再次打开；`OpenStream` 在分配 ID 前拒绝，已有 Stream 继续。短窗口 C++ 单测与 v2/v3 固定 Go 双向互操作通过；本机 Debug/ASan+UBSan/TSan、远端 Debug/ASan 各 18/18，普通互操作 50 轮、ASan helper 10 轮通过。
+- `E-M5-001`：公共安装头以 PImpl 隔离内部 v2/v3 类型，Session 独占 dispatcher 并按连接→event loop 顺序关闭，Stream 保留 move-only 独立句柄；同步示例只依赖导出 target。Linux 公共集成覆盖 TCP/file v2 与 Unix/memfd v3；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 19/19，macOS/Linux install 后独立消费者通过。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. 提交并由云端七项门禁验证 `S-0404`；通过后关闭 M4，进入 M5 公共 API、Listener/SessionManager 与热重启设计。
-2. 保留 live-pool mapping、v2/v3 双向 Session oracle、breaker 和既有压力矩阵作为持续回归。
+1. 提交并由云端七项门禁验证 `S-0501`；通过后进入 `S-0502` callback executor 与异步生命周期设计。
+2. 保留安装后消费者、公共 v2/v3 client 集成、live-pool mapping、双向 Go Session oracle、breaker 和既有压力矩阵作为持续回归。

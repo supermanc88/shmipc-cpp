@@ -45,7 +45,12 @@ jobs:
         run: ctest --test-dir build/ci --output-on-failure
 
       - name: Verify installation
-        run: cmake --install build/ci --prefix "${{ runner.temp }}/shmipc-install"
+        run: |
+          cmake --install build/ci --prefix "${{ runner.temp }}/shmipc-install"
+          cmake -S tests/package_consumer -B build/package-consumer -G Ninja \
+            -DCMAKE_PREFIX_PATH="${{ runner.temp }}/shmipc-install"
+          cmake --build build/package-consumer --parallel
+          ./build/package-consumer/shmipc_package_consumer
 
   sanitizer:
     name: ${{ matrix.name }}

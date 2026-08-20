@@ -51,13 +51,13 @@
 | `QUEUE-002` | working flag 与批量唤醒 | 已云端验证 | `S-0204` |
 | `QUEUE-003` | amd64/arm64 原子对齐 | 两套布局与两架构原子路径已云端验证 | `S-0102`/`S-0204` |
 | `STREAM-001..004` | 多路复用、读写、fallback、关闭 | v2/v3 多 Stream、deadline、sticky fallback、关闭及 Session breaker 已完成本机/远端验证 | M3/M4 |
-| `API-001` | RAII Session/Stream API | 内部单/多 Stream move-only API 已验证；公共 API 待设计 | M3 |
+| `API-001` | RAII Session/Stream API | 公共 client API、PImpl、同步示例及 v2/v3 Linux 集成已通过本机/远端验证，待云端门禁 | `S-0501` |
 | `API-002..003` | Listener/SessionManager/异步 API | 未开始 | M5 |
 | `OPS-001` | 热重启 | 未开始 | M5 |
 | `OBS-001` | 指标与日志 | 未开始 | M5 |
 | `NFR-001` | Linux x86_64/arm64 | x86_64 构建基线已验证 | M2 起补 arm64 |
 | `NFR-002` | 内存与并发安全 | 门禁已验证，功能待实现 | 全程 |
 | `NFR-003` | 性能目标 | 未开始 | M5 |
-| `NFR-004` | 安装与消费 | install 已验证，外部消费者待补 | M5 |
+| `NFR-004` | 安装与消费 | macOS/Linux install 后独立 `find_package` 消费者已验证，CI 门禁已补，待云端结果 | `S-0501` |
 
 本表只表达可复核状态；完整验收标准见 [SHMIPC_CPP_PORTING_PLAN.md](SHMIPC_CPP_PORTING_PLAN.md)。

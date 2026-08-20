@@ -9,8 +9,10 @@ project(
 include(CTest)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+find_package(Threads REQUIRED)
 
 option(SHMIPC_BUILD_TESTS "Build shmipc tests" ${BUILD_TESTING})
+option(SHMIPC_BUILD_EXAMPLES "Build shmipc examples" ON)
 option(SHMIPC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(SHMIPC_ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(SHMIPC_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
@@ -36,11 +38,13 @@ add_library(
     src/shm/shared_memory_region.cpp
     src/transport/control_socket.cpp
     src/transport/epoll_dispatcher.cpp
+    src/session.cpp
     src/version.cpp
 )
 add_library(shmipc::shmipc ALIAS shmipc)
 
 target_compile_features(shmipc PUBLIC cxx_std_17)
+target_link_libraries(shmipc PUBLIC Threads::Threads)
 target_include_directories(
     shmipc
     PUBLIC
@@ -60,6 +64,10 @@ shmipc_apply_project_options(shmipc)
 
 if(SHMIPC_BUILD_TESTS)
     add_subdirectory(tests)
+endif()
+
+if(SHMIPC_BUILD_EXAMPLES)
+    add_subdirectory(examples)
 endif()
 
 install(

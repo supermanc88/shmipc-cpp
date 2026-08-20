@@ -38,7 +38,7 @@
 - control callback 不反向持有 connection，不形成 ownership cycle。
 - 同一 Stream 的 send 以专用 mutex 保序；并发 close 先发布本地关闭状态并唤醒 retry，再等待在途 send 回收/退出，确保 close element 不越过数据。
 - 本地 close 后保留状态以允许等待 Session failure/remote close，句柄释放时才从路由表移除；remote half-close 同样保留到应用本地 close/释放。Session failure 在扇出原始错误后清空路由与待 Accept 队列。
-- 本层仍为消息级内部 API；v3 资源接入已完成。v2 类型保留兼容，v3 以别名复用实现，公共的版本中性 API 属于 M5。
+- 本层仍为消息级内部 API；v3 资源接入已完成。v2 类型保留兼容，v3 以别名复用实现；M5 公共版本中性 client API 已通过 `src/session.cpp` PImpl 适配，不直接导出本文件类型。
 - breaker 使用固定 Go 的 30 秒窗口；重复 fallback 不延长已打开窗口。短时长只用于独立状态机单测，不进入 Session 配置。
 
 ## Evidence
@@ -57,3 +57,4 @@
 - [单 client Session 基线](src__core__v2_client_session.hpp.md)
 - [单 server Session 基线](src__core__v2_server_session.hpp.md)
 - [架构决策](../02_DECISIONS.md)
+- [公共 PImpl 适配实现](src__session.cpp.md)

@@ -39,6 +39,21 @@ cmake --install build/debug --prefix /path/to/prefix
 The installed package exports the target `shmipc::shmipc` for use with
 `find_package(shmipc CONFIG REQUIRED)`.
 
+## Synchronous client API
+
+The public move-only `shmipc::Session` and `shmipc::Stream` API is declared in
+`<shmipc/session.hpp>`. The `shmipc_synchronous_client` example connects to a
+v2 TCP server, opens a stream, sends one message, receives its response, and
+closes both RAII handles:
+
+```bash
+./build/debug/examples/shmipc_synchronous_client \
+  127.0.0.1 9000 /dev/shm/my_queue /dev/shm/my_buffer hello
+```
+
+Use `shmipc::connect_unix` with `SharedMemoryMode::memfd` for the Linux v3
+memfd path. Memfd descriptor transfer is intentionally unavailable over TCP.
+
 ## Project documents
 
 - [Porting plan](docs/SHMIPC_CPP_PORTING_PLAN.md)

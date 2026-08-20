@@ -261,12 +261,23 @@
 
 ### D-031：FallbackData 打开固定 30 秒 Session breaker，期间只拒绝新流
 
-- 状态：已验证；S-0404 本机/远端和固定 Go 双向 oracle 通过，待云端门禁。
+- 状态：已验证；提交 `39937bd` 的 GitHub Actions run `32329216783` 七项门禁成功，M4 关闭。
 - 触发：成功解码收到的 FallbackData，以及发送端决定走 sticky/no-buffer fallback 时打开 breaker；queue-full StreamClose 不触发。
 - 窗口：首次从 healthy 进入 unhealthy 后固定 30 秒，窗口内重复 fallback 不延长 deadline；到期由 steady clock 判定恢复，恢复后的下一次 fallback 可重新打开。
 - 行为：`is_healthy()` 暴露状态；client `open_stream()` 在分配 ID 前返回 `V2SessionError::unhealthy`。已有 Stream 的 send/receive/close 不受 breaker 阻断。
 - 并发：deadline 使用 seq_cst atomic ticks 和 CAS，不创建 timer 线程，不与 Session/Stream mutex 形成新的锁序。
 - 证据：固定 Go `session.go:230-268,546-558`、`stream.go:256-270`、`protocol_manager.go:153-176`；C++ `src/core/v2_multiplexed_session.hpp:16-34,112-115`、`.cpp:16-38,148-159,513-534,727-747`。本机 Debug/ASan+UBSan/TSan、远端 Debug/ASan 各 18/18，v2/v3 固定 Go 双向普通 50 轮及 ASan helper 10 轮通过。
+
+### D-032：公共 client API 使用版本无关 move-only PImpl，并由 Session 独占 event loop
+
+- 状态：已验证实现，待云端门禁；`S-0501` 本机与远端 Linux 门禁通过。
+- API：安装头只导出 `ClientConfig`、`Status/Error`、move-only `Session/Stream` 及 `connect_tcp/connect_unix`；协议版本、handshake、dispatcher、queue/pool 错误不进入 public type layout。
+- ownership：`Session::Impl` 按 dispatcher→内部 Session 的成员顺序持有资源，析构时先关闭内部 Session、再停止并 join dispatcher；显式 `close()` 同样遵循该顺序且幂等。`Stream` 独立持有内部句柄，Session 关闭后操作确定性返回 closed。
+- 模式：file 模式可使用 TCP/Unix；memfd 需要 Unix socket 传递 descriptor，TCP+memfd 在建立连接前返回 `unsupported`。公共默认 queue/pool/tier 与固定 Go 默认值一致。
+- 错误：内部 transport/handshake/codec/queue/pool 细节归一化为稳定 public 分类，同时保留 `system_error`；不会把内部枚举固定进安装 ABI。
+- 并发：不同 Stream 可并发，同一 Stream 的 mutation 依赖已验证内部串行化；同步 API 只返回 owned `std::vector<uint8_t>`，因此本切片没有暴露 borrowed-view 生命周期。
+- 构建：库公开传播 `Threads::Threads`，安装 config 用 `find_dependency(Threads)` 恢复依赖；CI 在 install 后以独立工程 `find_package(shmipc CONFIG REQUIRED)` 编译运行消费者。
+- 证据：`include/shmipc/session.hpp:13-170`、`src/session.cpp:13-369`、`tests/public_session_test.cpp:45-185`、`tests/package_consumer/`、`examples/synchronous_client.cpp`、`CMakeLists.txt:12-81`。本机 Debug/ASan+UBSan/TSan 与远端 GCC 8.5 Debug/ASan 各 19/19，两个平台安装消费 smoke 通过。
 
 ## 设计风险与待验证事实
 
@@ -315,6 +326,8 @@
 
 ## 修订历史
 
+- 2026-08-20：`S-0501` 新增版本无关 move-only Session/Stream 公共 API、PImpl client 适配、同步示例、线程 package 依赖和安装后外部消费者；Linux 测试覆盖 v2 TCP/file 与 v3 Unix/memfd。影响文档：索引、概要、本文件、root/core 目录、公共 API/实现文件、关系图、README、计划、回归指南和功能矩阵。
+- 2026-08-20：提交 `39937bd` 的 GitHub Actions run `32329216783` 七项门禁成功，`S-0404` 与 M4 正式关闭。
 - 2026-08-19：`S-0404` 新增 30 秒 Session circuit breaker、`is_healthy()` 与 `unhealthy` 开流错误；v2/v3 固定 Go 双向验证发送端和接收端均拒绝新流且已有 Stream 可继续。压力测试修正了“Go 必须在首个 shared read 后仍非 fallback”的时序假设：`pendingData.moveToWithoutLock` 会批量搬运后续 fallback。影响文档：索引、概要、本文件、core/oracle 目录、多路 Session 文件、关系图、计划、工作流、回归指南和功能矩阵。
 - 2026-08-19：`S-0403b` 将多路 Session state 通用化为 v2 文件/v3 memfd 资源 variant，新增运行期 header version、v3 启动 API、C++ 端到端测试与固定 Go 双向 Session oracle。证据：`src/core/v2_multiplexed_session.*`、`tests/v3_multiplexed_session*`、`tools/go_oracle/control_header_oracle_test.gotxt:181-333`；影响文档：索引、概要、本文件、core/oracle 目录、Session 文件、关系图、计划、回归指南和功能矩阵。
 

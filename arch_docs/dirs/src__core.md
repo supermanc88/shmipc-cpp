@@ -50,6 +50,7 @@
 - `TestV2FallbackInterop` 双向验证 1 KiB shared、2 MiB fallback、257 B sticky 和反向 fallback ACK；远端普通 50 轮、ASan helper 10 轮通过。
 - `tests/v3_multiplexed_session_test.cpp` 与 `TestV3MultiplexedSessionInterop` 验证完整 v3 memfd→epoll→shared/fallback/sticky/close 链路；本机三套与远端 Debug/ASan 18/18，固定 Go 双向普通 50 轮、ASan helper 10 轮通过。
 - `S-0404` 在同一矩阵验证 v2/v3 两端 fallback 后 Session unhealthy、拒绝新 Stream、已有 Stream 完成 ACK/close；短窗口单测验证重复触发不延长和恢复后可重新打开。
+- `src/session.cpp` 通过 PImpl 复用本目录的多路 client Session；公共测试以 v2 TCP/file 和 v3 Unix/memfd 两条真实链路验证适配不改变内部协议行为。
 - 提交 `78913e6` 的 GitHub Actions run `32204938990` 七项门禁全部成功，Go protocol oracle CTest 为 16/16；`S-0305a/b` 与 M3 正式关闭。
 
 ## Links
@@ -60,5 +61,7 @@
 - [v2 client Session 文件](../files/src__core__v2_client_session.hpp.md)
 - [v2 server Session 文件](../files/src__core__v2_server_session.hpp.md)
 - [v2 multiplexed Session 文件](../files/src__core__v2_multiplexed_session.hpp.md)
+- [公共 Session/Stream API](../files/include__shmipc__session.hpp.md)
+- [公共 PImpl 适配实现](../files/src__session.cpp.md)
 - [架构概要](../01_OVERVIEW.md)
 - [回归测试指南](../../docs/regression-test-guide.md)
