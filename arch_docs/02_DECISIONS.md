@@ -272,7 +272,7 @@
 
 - 状态：已验证实现，待云端门禁；`S-0501` 本机与远端 Linux 门禁通过。
 - API：安装头只导出 `ClientConfig`、`Status/Error`、move-only `Session/Stream` 及 `connect_tcp/connect_unix`；协议版本、handshake、dispatcher、queue/pool 错误不进入 public type layout。
-- ownership：`Session::Impl` 持有内部 Session 与共享 EventLoop；client 当前是其 event loop 唯一 Session owner，Listener 场景可由多个 accepted Session 共享。显式 `close()` 先关闭 Session，再释放 EventLoop owner；最后一个 owner 析构时 stop/join。`Stream` 独立持有内部句柄。
+- ownership：`Session::Impl` 持有内部 Session 与共享 EventLoop；client 当前是其 event loop 唯一 Session owner，Listener 场景可由多个 accepted Session 共享。显式 `close()` 先停止可选 telemetry worker，再关闭 Session 并释放 EventLoop owner；最后一个 owner 析构时 stop/join。`Stream` 独立持有内部句柄。
 - 模式：file 模式可使用 TCP/Unix；memfd 需要 Unix socket 传递 descriptor，TCP+memfd 在建立连接前返回 `unsupported`。公共默认 queue/pool/tier 与固定 Go 默认值一致。
 - 错误：内部 transport/handshake/codec/queue/pool 细节归一化为稳定 public 分类，同时保留 `system_error`；不会把内部枚举固定进安装 ABI。
 - 并发：不同 Stream 可并发，同一 Stream 的 mutation 依赖已验证内部串行化；同步 API 只返回 owned `std::vector<uint8_t>`，因此本切片没有暴露 borrowed-view 生命周期。
@@ -308,6 +308,17 @@
 - 并发：固定 pool vector 初始化后不再清空；atomic stopping/selection 与 per-pool mutex 使 `close` 可与 `get_stream` 并发。shutdown 先通知/join workers，再关闭池资源。
 - 边界：本切片不实现 Go hot-restart epoch；连接建立后的 handshake 仍沿用同步 Session API，没有独立 handshake timeout。
 - 证据：固定 Go `session_manager.go`；`include/shmipc/session_manager.hpp:13-104`、`src/session_manager.cpp:20-378`、`src/core/v2_multiplexed_session.cpp:505-514,764-788`、`tests/public_session_manager_test.cpp`。本机四套与远端 Debug/ASan 各 21/21，远端专项连续 20 轮，macOS/Linux 安装消费者通过。
+
+### D-036：可观测性使用累计快照、per-Session worker 与非侵入式错误隔离
+
+- 状态：已验证实现，待云端门禁；`S-0505` 本机与远端 Linux 门禁通过。
+- API：公共 `SessionMetrics` 聚合 Session ID/角色/协议版本、性能累计计数、稳定性累计计数与 queue/Stream/shared-memory gauge；`Session::metrics()` 可同步读取。Client/Listener 配置可注入共享 Monitor/Logger、周期和日志阈值，默认不隐式输出。
+- 采集：核心在 Polling、数据收发、共享内存分配失败、fallback、queue full 和非本地 control close 发生点更新 relaxed 原子；采样不承担数据发布同步。共享内存 capacity/used 按固定 Go `capacity` 与原子 `size` 口径计算，capacity 包含 sentinel。
+- 生命周期：每个受监控 Session 启动一个 worker；周期回调与 shutdown 最终回调都读取累计快照。关闭顺序固定为 stop/join worker（最终 snapshot→flush）→核心 Session close→mapping/EventLoop 释放，因此最终采样不会访问已 unmap 内存。
+- 隔离：Monitor/Logger 可被多个 Session worker 并发调用，调用方实现必须线程安全；emit/flush/Logger 的异常或失败被捕获并记录，不把成功的数据面关闭改为失败。该处理与固定 Go 忽略 `Monitor.Flush()` 返回错误的行为一致。
+- 重入边界：Monitor callback 不得同步关闭或销毁当前上报 Session，因为 shutdown 需要 join 同一 worker；该限制写入公共头。Monitor 接口不暴露 Session 引用，降低误用概率。
+- 重连：SessionManager 的每次成功连接拥有独立 Session ID 和指标生命周期；manager 另外通过 Logger 记录重连失败/成功。hot-restart 成功/失败计数留给 `S-0601`，不在此切片伪造。
+- 证据：固定 Go `stats.go`、`session.go:467-482,715-755`；C++ `include/shmipc/session.hpp:52-139`、`src/session.cpp:207-348`、`src/core/v2_multiplexed_session.cpp:150-188,366-419`、`src/shm/buffer_pool.cpp:165-201`、`tests/public_observability_test.cpp:44-277` 与底层指标断言。本机 Debug/Release/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 22/22，远端专项连续 20 轮及 macOS/Linux 安装消费者通过。
 
 ## 设计风险与待验证事实
 
@@ -356,6 +367,7 @@
 
 ## 修订历史
 
+- 2026-08-20：`S-0505` 新增累计 Session 指标、同步 snapshot、线程安全 Monitor/Logger 注入、per-Session 周期 worker、关闭前最终 snapshot/flush 和重连日志。对照固定 Go 修正两点语义：flush 失败不改变 transport close 结果，共享内存 capacity 包含 sentinel 且 used 从原子 free size 计算。证据：`include/shmipc/session.hpp`、`src/{session,listener,session_manager}.cpp`、`src/core/v2_multiplexed_session.cpp`、`src/shm/buffer_pool.cpp`、`tests/public_observability_test.cpp`；影响文档：索引、概要、本文件、root/core/shm 目录、公共/PImpl/多路/buffer pool 文件、关系图、README、计划、回归指南和功能矩阵。
 - 2026-08-20：`S-0504` 新增 SessionManager、批量 round-robin、per-Session FIFO Stream pool、RAII lease、generation 隔离与独立重连 worker。Linux 运行时诊断修正默认空 Result 测试误判，并发现/修复丢弃不可复用 idle Stream 后未新建的问题；临时插桩已清理。证据：`include/shmipc/session_manager.hpp`、`src/session_manager.cpp`、`tests/public_session_manager_test.cpp`；影响文档：索引、概要、本文件、root/public/manager 文件、关系图、计划、回归指南和功能矩阵。
 - 2026-08-20：`S-0503` 新增 move-only Listener、server Session/AcceptStream、共享 EventLoop 与 StreamConnection。远端 Linux 运行时调试修正公开握手上限未经协议收窄导致 v2/v3 默认配置失败；临时插桩已清理。影响文档：索引、概要、本文件、root/public 文件、关系图、ADR、计划、回归指南和功能矩阵。
 - 2026-08-20：`S-0502` 新增共享 callback executor、核心 tokenized readable notifier、每流 generation pump、RAII subscription、callback 内 Close/异常隔离和普通线程销毁等待。证据：`include/shmipc/session.hpp:105-199`、`src/callback.cpp:56-443`、`src/public/session_impl.hpp:10-27`、`src/core/v2_multiplexed_session.cpp:270-344,675-740`；影响文档：索引、概要、本文件、root/core 目录、公共/异步/PImpl/多路文件、关系图、ADR、计划、回归指南和功能矩阵。

@@ -112,9 +112,14 @@ bool test_selection_exhaustion_and_recycle() {
         return false;
     }
     const auto initial_bytes = pool.value.available_bytes();
+    if (pool.value.capacity_bytes() != initial_bytes + 4096U + 8192U ||
+        pool.value.used_bytes() != 0U) {
+        return false;
+    }
     auto large = pool.value.allocate(5000U);
     if (!large || large.value.capacity() != 8192U ||
-        pool.value.available_bytes() != initial_bytes - 8192U) {
+        pool.value.available_bytes() != initial_bytes - 8192U ||
+        pool.value.used_bytes() != 8192U) {
         return false;
     }
     if (pool.value.recycle(std::move(large.value)) != BufferPoolError::none) {

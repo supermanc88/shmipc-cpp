@@ -266,6 +266,17 @@ bool test_buffer_exhaustion_sticky_fallback() {
     return false;
   }
 
+  const auto client_metrics = client.value.metrics();
+  const auto server_metrics = server.value.metrics();
+  const auto total_bytes = shared.size() + exhausted.size() + sticky.size();
+  if (client_metrics.bytes_sent != total_bytes ||
+      client_metrics.shared_memory_allocation_errors != 1U ||
+      client_metrics.fallback_writes != 2U ||
+      server_metrics.bytes_received != total_bytes ||
+      server_metrics.fallback_reads != 2U) {
+    return false;
+  }
+
   static_cast<void>(client_stream.close());
   static_cast<void>(server_stream.close());
   static_cast<void>(client.value.close());
@@ -366,6 +377,9 @@ bool test_queue_full_retry_and_close_fallback() {
   if (!client.value.is_healthy()) {
     return false;
   }
+  if (client.value.metrics().queue_full_errors < 3U) {
+    return false;
+  }
 
   for (std::size_t index = 0U; index < 8U; ++index) {
     const auto element = server.value.receive_queue().pop();
@@ -429,6 +443,9 @@ bool test_session_failure_propagation() {
       second_failure.status.error != shmipc::core::V2SessionError::closed ||
       client.value.open_stream().status.error !=
           shmipc::core::V2SessionError::invalid_argument) {
+    return false;
+  }
+  if (server.value.metrics().control_connection_errors != 1U) {
     return false;
   }
   first.value = {};

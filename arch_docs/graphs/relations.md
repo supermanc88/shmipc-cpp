@@ -13,6 +13,7 @@ graph TD
   callback_impl["src/callback.cpp async adapter"]
   stream_impl["src/public/session_impl.hpp shared PImpl"]
   callback_executor["CallbackExecutor shared thread pool"]
+  telemetry["Monitor / Logger / per-Session metrics worker"]
   library["shmipc library"]
   implementation["src/version.cpp"]
   package["shmipcConfig.cmake / shmipcTargets.cmake"]
@@ -52,6 +53,8 @@ graph TD
   public_impl -- owns --> dispatcher
   public_impl -- delegates --> multiplexed_session
   public_impl -- shares --> stream_impl
+  public_impl -- emits/flushes --> telemetry
+  multiplexed_session -- snapshots counters/gauges --> telemetry
   listener_impl -- implements --> public
   listener_impl -- shares --> stream_impl
   listener_impl -- accepts/starts --> multiplexed_session

@@ -78,6 +78,16 @@ reconnection for each Session. `get_stream()` returns a move-only
 pool and closes fallback, unread, callback-bound, stale-generation, or excess
 Streams instead. Hot-restart epoch support is planned separately.
 
+## Metrics and logging
+
+`ClientConfig` and `ListenerConfig` accept optional shared `Monitor` and
+`Logger` implementations. `Session::metrics()` returns a cumulative snapshot
+of traffic and stability counters plus current queue, Stream, and shared-memory
+gauges. A configured monitor receives periodic snapshots and one final snapshot
+followed by `flush()` before Session resources are released. Monitor and logger
+implementations may be shared by Sessions and therefore must be thread-safe;
+their failures are isolated from transport operations.
+
 ## Project documents
 
 - [Porting plan](docs/SHMIPC_CPP_PORTING_PLAN.md)

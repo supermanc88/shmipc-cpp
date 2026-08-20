@@ -39,7 +39,8 @@ Status map_dispatcher_status(transport::TransportError error,
 
 bool valid_config(const ListenerConfig& config) noexcept {
     return config.backlog > 0 &&
-           config.max_handshake_frame_length >= 8U;
+           config.max_handshake_frame_length >= 8U &&
+           config.metrics_interval.count() > 0;
 }
 
 int poll_timeout(Clock::time_point deadline) noexcept {
@@ -59,18 +60,29 @@ struct Listener::Impl final {
     Impl(transport::ControlListener&& control_listener,
          std::shared_ptr<EventLoop> loop, SharedMemoryMode mode,
          std::uint32_t maximum_frame_length,
-         std::uint16_t bound_port) noexcept
+         std::uint16_t bound_port, std::shared_ptr<Monitor> session_monitor,
+         std::chrono::milliseconds interval,
+         std::shared_ptr<Logger> session_logger,
+         LogLevel session_log_level) noexcept
         : listener(std::move(control_listener)),
           event_loop(std::move(loop)),
           shared_memory_mode(mode),
           max_handshake_frame_length(maximum_frame_length),
-          port(bound_port) {}
+          port(bound_port),
+          monitor(std::move(session_monitor)),
+          metrics_interval(interval),
+          logger(std::move(session_logger)),
+          log_level(session_log_level) {}
 
     transport::ControlListener listener{};
     std::shared_ptr<EventLoop> event_loop{};
     SharedMemoryMode shared_memory_mode{SharedMemoryMode::file};
     std::uint32_t max_handshake_frame_length{0U};
     std::uint16_t port{0U};
+    std::shared_ptr<Monitor> monitor{};
+    std::chrono::milliseconds metrics_interval{30000};
+    std::shared_ptr<Logger> logger{};
+    LogLevel log_level{LogLevel::warning};
     std::atomic<bool> closed{false};
     std::mutex accept_mutex{};
     std::mutex listener_mutex{};
@@ -176,7 +188,9 @@ SessionResult Listener::accept_session(std::chrono::milliseconds timeout) {
                 return {{}, detail::map_session_status(result.status)};
             }
             return {Session(std::make_unique<Session::Impl>(
-                        impl->event_loop, std::move(result.value))), {}};
+                        impl->event_loop, std::move(result.value), impl->monitor,
+                        impl->metrics_interval, impl->logger,
+                        impl->log_level)), {}};
         }
         auto result = core::start_v3_multiplexed_server_session(
             std::move(accepted.value), impl->event_loop->dispatcher,
@@ -189,7 +203,9 @@ SessionResult Listener::accept_session(std::chrono::milliseconds timeout) {
                                   : handshake};
         }
         return {Session(std::make_unique<Session::Impl>(
-                    impl->event_loop, std::move(result.value))), {}};
+                    impl->event_loop, std::move(result.value), impl->monitor,
+                    impl->metrics_interval, impl->logger,
+                    impl->log_level)), {}};
     }
 }
 
@@ -235,7 +251,8 @@ ListenerResult listen_tcp(const std::string& host, std::uint16_t port,
     return {Listener(std::make_shared<Listener::Impl>(
                 std::move(listener.value), std::move(event_loop),
                 config.shared_memory_mode, config.max_handshake_frame_length,
-                bound_port.value)), {}};
+                bound_port.value, config.monitor, config.metrics_interval,
+                config.logger, config.log_level)), {}};
 }
 
 ListenerResult listen_unix(const std::string& path,
@@ -262,7 +279,8 @@ ListenerResult listen_unix(const std::string& path,
     return {Listener(std::make_shared<Listener::Impl>(
                 std::move(listener.value), std::move(event_loop),
                 config.shared_memory_mode, config.max_handshake_frame_length,
-                0U)), {}};
+                0U, config.monitor, config.metrics_interval, config.logger,
+                config.log_level)), {}};
 }
 
 }  // namespace shmipc

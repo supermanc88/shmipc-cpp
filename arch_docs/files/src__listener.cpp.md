@@ -6,7 +6,7 @@
 
 ## Key Symbols
 
-- `Listener::Impl`：监听 FD、共享 `EventLoop`、mode、端口、关闭原子和 accept/listener mutex。
+- `Listener::Impl`：监听 FD、共享 `EventLoop`、mode、端口、Monitor/Logger 配置、关闭原子和 accept/listener mutex。
 - `Listener::accept_session`：以最长 50 ms poll slice 等待连接，序列化 accept，随后同步握手并返回 server Session。
 - `Listener::close`：原子标记关闭并关闭监听 FD，不释放 accepted Session 持有的 event loop。
 - `listen_tcp`、`listen_unix`：配置门禁、dispatcher/listener 创建和 PImpl 组装。
@@ -18,6 +18,7 @@
 - listener_mutex 防止 close 与 native_handle/accept 的 FD 生命周期竞争；accept_mutex 禁止并发 accept 握手交错。
 - close 只复制而不改写公共对象中的 shared_ptr owner，使其与并发 accept 复制 owner 无数据竞争。
 - move-assignment 先 close 目标原有监听，再接管源 owner，避免旧 accept 因共享状态仍存活而继续等待。
+- accept 成功后把观测配置复制进新的 Session PImpl；Listener 自身不创建指标 worker，也不替 accepted Session flush。
 
 ## Evidence
 

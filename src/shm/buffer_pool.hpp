@@ -99,6 +99,8 @@ public:
     [[nodiscard]] std::uint32_t min_slice_capacity() const noexcept;
     [[nodiscard]] std::uint32_t max_slice_capacity() const noexcept;
     [[nodiscard]] std::size_t used_size() const noexcept;
+    [[nodiscard]] std::uint64_t capacity_bytes() const noexcept;
+    [[nodiscard]] std::uint64_t used_bytes() const noexcept;
     [[nodiscard]] std::uint64_t available_bytes() const noexcept;
     [[nodiscard]] bool all_returned() const noexcept;
 

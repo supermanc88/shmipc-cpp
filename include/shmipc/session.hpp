@@ -49,6 +49,76 @@ struct BufferTier {
     std::uint32_t percent{0};
 };
 
+struct PerformanceMetrics {
+    std::uint64_t received_polling_events{0U};
+    std::uint64_t sent_polling_events{0U};
+    std::uint64_t bytes_sent{0U};
+    std::uint64_t bytes_received{0U};
+    std::uint64_t send_queue_depth{0U};
+    std::uint64_t receive_queue_depth{0U};
+};
+
+struct StabilityMetrics {
+    std::uint64_t shared_memory_allocation_errors{0U};
+    std::uint64_t fallback_writes{0U};
+    std::uint64_t fallback_reads{0U};
+    std::uint64_t control_connection_errors{0U};
+    std::uint64_t queue_full_errors{0U};
+    std::uint64_t active_streams{0U};
+};
+
+struct SharedMemoryMetrics {
+    std::uint64_t capacity_bytes{0U};
+    std::uint64_t used_bytes{0U};
+};
+
+struct SessionMetrics {
+    std::uint64_t session_id{0U};
+    bool is_client{false};
+    std::uint8_t protocol_version{0U};
+    PerformanceMetrics performance{};
+    StabilityMetrics stability{};
+    SharedMemoryMetrics shared_memory{};
+};
+
+// A monitor can be shared by multiple sessions. Its callbacks may run
+// concurrently and must be thread-safe. Counters are cumulative for the
+// lifetime of one session; gauges represent the state at snapshot time.
+// A callback must not synchronously close or destroy its emitting Session;
+// shutdown waits for that Session's monitor callback to finish.
+class Monitor {
+public:
+    virtual ~Monitor() = default;
+
+    virtual void on_session_metrics(const SessionMetrics& metrics) = 0;
+    // Called once for each monitored session after its final snapshot and
+    // before that session releases its transport and shared-memory resources.
+    // A failure is reported to Logger, when configured, but does not make a
+    // successful Session::close() fail.
+    [[nodiscard]] virtual Status flush() = 0;
+};
+
+enum class LogLevel {
+    trace,
+    debug,
+    info,
+    warning,
+    error,
+    off,
+};
+
+[[nodiscard]] const char* to_string(LogLevel level) noexcept;
+
+class Logger {
+public:
+    virtual ~Logger() = default;
+
+    // A logger can be shared by multiple sessions and must be thread-safe.
+    // Exceptions are contained by the library and never cross the API.
+    virtual void log(LogLevel level, const std::string& component,
+                     const std::string& message) = 0;
+};
+
 struct ClientConfig {
     SharedMemoryMode shared_memory_mode{SharedMemoryMode::file};
 
@@ -63,6 +133,10 @@ struct ClientConfig {
         {32U * 1024U - 20U, 30U},
         {128U * 1024U - 20U, 20U},
     };
+    std::shared_ptr<Monitor> monitor{};
+    std::chrono::milliseconds metrics_interval{30000};
+    std::shared_ptr<Logger> logger{};
+    LogLevel log_level{LogLevel::warning};
 };
 
 struct MessageResult;
@@ -217,6 +291,7 @@ public:
     [[nodiscard]] explicit operator bool() const noexcept;
     [[nodiscard]] bool is_open() const noexcept;
     [[nodiscard]] bool is_healthy() const noexcept;
+    [[nodiscard]] SessionMetrics metrics() const noexcept;
     [[nodiscard]] StreamResult open_stream();
     [[nodiscard]] StreamResult accept_stream(std::chrono::milliseconds timeout);
     [[nodiscard]] Status close() noexcept;

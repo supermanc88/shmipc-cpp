@@ -31,7 +31,7 @@
 - `BufferAllocation`：不可复制、只可 move-construct 的显式所有权 token；暴露 `data()`、`capacity()`、共享内存绝对 `offset()` 和有效性检查。成功回收后 token 失效。
 - `BufferChain`：一组 allocation tokens 与有效数据总长；提供有效性和 root offset。
 - `PublishedBufferChain`：发布后可跨进程传递的 root offset、slice 数量和有效数据总长。
-- `BufferPool`：不可复制、可移动的非 owning pool view；除单 slice `allocate/recycle` 外，提供 `allocate_chain/publish_chain/adopt_chain/recycle_chain`。
+- `BufferPool`：不可复制、可移动的非 owning pool view；除单 slice `allocate/recycle` 外，提供 `allocate_chain/publish_chain/adopt_chain/recycle_chain`，以及声明容量、当前已用和可分配字节快照。
 - `BufferPoolCreateResult = BufferPoolResult<BufferPool>`。
 - `BufferAllocationResult = BufferPoolResult<BufferAllocation>`。
 - `BufferChainResult = BufferPoolResult<BufferChain>`。
@@ -61,6 +61,7 @@
 
 - tier capacity 唯一、非零且为 4 的倍数，percent 各自为 `1..100` 且总和严格等于 100；所有 offsets 必须可由 uint32 表示。
 - 与 Go 一致，每个 list 永远保留最后一个 sentinel；因此可分配数量为共享 `size - 1`。
+- `capacity_bytes()` 与 `used_bytes()` 复现 Go 指标口径：capacity 包含 sentinel，used 为 `(capacity - atomic size) * capacity_per_buffer`；`available_bytes()` 仍只统计实际可分配的 `size - 1`。
 - 本地 token 只能由同角色 view 回收；跨进程发布后由接收端 `adopt_chain` 创建接收角色 token。失败不会使 token 失效，成功回收才失效。
 - token 析构不会自动回收，因为后续跨进程传递会转移逻辑所有权；调用方必须显式 `recycle`，并可用 `all_returned()` 做关闭门禁。
 - size/head/tail/角色计数使用 always-lock-free 32 位 seq_cst 原子；slice 普通字段的可见性由“写完后发布 size”和“成功 CAS 后取得独占所有权”建立。

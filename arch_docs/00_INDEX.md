@@ -75,16 +75,16 @@
 | `CMakeLists.txt` | ✅ | #cmake #install | C++17 library、CTest、安装与 package export |
 | `cmake/ShmipcProjectOptions.cmake` | ✅ | #warnings #sanitizer | GCC/Clang/MSVC 告警策略及 ASan/UBSan/TSan 入口 |
 | `include/shmipc/version.hpp` | ✅ | #public-api #version | 公共版本声明 |
-| `include/shmipc/session.hpp` | ✅ | #public-api #session #stream #callback #raii | move-only client/server Session/Stream、异步 callback、配置、结果与稳定错误分类 |
-| `include/shmipc/listener.hpp` | ✅ | #public-api #server #listener | move-only TCP/Unix Listener、配置、accept 与关闭契约 |
+| `include/shmipc/session.hpp` | ✅ | #public-api #session #stream #callback #metrics #logging #raii | move-only Session/Stream、异步 callback、累计指标、Monitor/Logger 与稳定错误分类 |
+| `include/shmipc/listener.hpp` | ✅ | #public-api #server #listener #metrics | move-only TCP/Unix Listener、观测配置、accept 与关闭契约 |
 | `include/shmipc/session_manager.hpp` | ✅ | #public-api #client #pool #reconnect | move-only 多 Session manager 与池化 Stream lease |
 | `include/shmipc/stream_connection.hpp` | ✅ | #public-api #adapter #byte-stream | copy-based Read/Write、deadline 与未读后缀契约 |
-| `src/session.cpp` | ✅ | #public-api #pimpl #adapter | v2/v3 内部数据面的版本无关同步适配与 event loop ownership |
+| `src/session.cpp` | ✅ | #public-api #pimpl #adapter #telemetry | v2/v3 同步适配、指标线程、日志隔离与 event loop ownership |
 | `src/listener.cpp` | ✅ | #public-api #server #lifecycle | nonblocking accept、v2/v3 server 启动与共享 event loop |
 | `src/session_manager.cpp` | ✅ | #public-api #client #pool #reconnect | round-robin、FIFO Stream pool、generation 与 per-Session worker |
 | `src/stream_connection.cpp` | ✅ | #public-api #adapter #buffering | 消息边界隐藏、跨消息 copy 与延迟终止状态 |
 | `src/callback.cpp` | ✅ | #public-api #callback #executor #lifecycle | 共享线程池、每流串行 pump、RAII subscription 与关闭/异常处理 |
-| `src/public/session_impl.hpp` | ✅ | #private #pimpl #lifecycle | 同步与异步实现共享的 Stream PImpl/control 状态 |
+| `src/public/session_impl.hpp` | ✅ | #private #pimpl #lifecycle #telemetry | 同步/异步共享 PImpl、Logger 引用与 per-Session 指标 worker |
 | `examples/synchronous_client.cpp` | ✅ | #example #sync | TCP/file 模式 connect/open/send/receive/close 示例 |
 | `examples/synchronous_server.cpp` | ✅ | #example #server | TCP/file listen/accept/read/echo 示例 |
 | `src/version.cpp` | ✅ | #implementation #version | 版本 API 实现 |
@@ -96,8 +96,8 @@
 | `src/shm/buffer_layout.cpp` | ✅ | #shared-memory #buffer #bounds | buffer 布局显式访问与 checked size |
 | `src/shm/shared_memory_region.hpp` | ✅ | #shared-memory #raii #ownership | move-only mapping、FD/path 所有权与错误接口 |
 | `src/shm/shared_memory_region.cpp` | ✅ | #mmap #memfd #file | MAP_SHARED 创建、映射与清理实现 |
-| `src/shm/buffer_pool.hpp` | ✅ | #shared-memory #allocator #ownership | 原子 pool、move-only token 与 chain API |
-| `src/shm/buffer_pool.cpp` | ✅ | #buffer #free-list #atomic | CAS 分配回收、publish/adopt 与严格校验 |
+| `src/shm/buffer_pool.hpp` | ✅ | #shared-memory #allocator #ownership #metrics | 原子 pool、容量/已用快照、move-only token 与 chain API |
+| `src/shm/buffer_pool.cpp` | ✅ | #buffer #free-list #atomic #metrics | CAS 分配回收、publish/adopt、严格校验与原子容量统计 |
 | `src/shm/buffer_io.hpp` | ✅ | #buffer #zero-copy #lifetime | Writer/Reader、view、pin/release 与错误接口 |
 | `src/shm/buffer_io.cpp` | ✅ | #buffer #copy #raii | 档位写入、单片零拷贝、跨片复制与回收 |
 | `src/shm/atomic_word.hpp` | ✅ | #atomic #cross-process #seq-cst | lock-free 32/64 位共享原子 primitive |
@@ -116,8 +116,8 @@
 | `src/core/v2_client_session.hpp` | ✅ | #session #stream #errors | 单 client Session/Stream API 与错误模型 |
 | `src/core/v2_client_session.cpp` | ✅ | #epoll #queue #buffer | Polling、消息收发、timeout 与 close 状态机 |
 | `src/core/v2_server_session.hpp` | ✅ | #server #session #stream | 首个远端 Stream 动态绑定与服务端 API |
-| `src/core/v2_multiplexed_session.hpp` | ✅ | #session #stream #v2 #v3 | 版本无关多路数据面、Session circuit breaker、v2/v3 启动入口与兼容别名 |
-| `src/core/v2_multiplexed_session.cpp` | ✅ | #session #routing #fallback #notifier | 资源 variant、版本化控制帧、30 秒 unhealthy 窗口、Stream 路由与 tokenized readable notifier |
+| `src/core/v2_multiplexed_session.hpp` | ✅ | #session #stream #v2 #v3 #metrics | 多路数据面、累计指标、Session circuit breaker 与 v2/v3 启动入口 |
+| `src/core/v2_multiplexed_session.cpp` | ✅ | #session #routing #fallback #notifier #metrics | 资源 variant、Stream 路由、fallback/notifier 与原子指标采集 |
 | `tests/version_test.cpp` | ✅ | #test | 无第三方依赖的首个 library test |
 | `tests/control_header_golden_test.cpp` | ✅ | #test #protocol #golden | C++ 侧消费 control-header fixture |
 | `tests/protocol_codec_test.cpp` | ✅ | #test #protocol #negative | metadata/fallback round-trip 与异常输入测试 |
@@ -141,6 +141,7 @@
 | `tests/public_session_test.cpp` | ✅ | #test #public-api #v2 #v3 #callback | 公共 client API 的 v2/v3 端到端、callback 并发与关闭生命周期测试 |
 | `tests/public_listener_test.cpp` | ✅ | #test #public-api #server #adapter | 公共 server v2/v3、关闭延续与跨消息字节流测试 |
 | `tests/public_session_manager_test.cpp` | ✅ | #test #public-api #pool #reconnect | round-robin/FIFO、容量、重连、配置与并发关闭测试 |
+| `tests/public_observability_test.cpp` | ✅ | #test #public-api #metrics #logging | 累计指标、周期/最终快照、flush、日志与错误隔离测试 |
 | `tests/package_consumer/` | ✅ | #test #install #cmake | 仅通过安装头和 `find_package` 构建的外部消费者 smoke |
 | `tests/v2_client_session_test.cpp` | ✅ | #test #session #roundtrip | 单 Stream 跨 slice 双向消息、timeout 与 close |
 | `tests/v2_client_session_interop_helper.cpp` | ✅ | #test #interop #stream | C++ client→真实 Go server helper |
@@ -195,8 +196,9 @@
 | C++ 异步 Stream callback | `include/shmipc/session.hpp`, `src/callback.cpp`, `src/public/session_impl.hpp`, `tests/public_session_test.cpp` | `API-003`, `NFR-002` |
 | Listener 与字节流兼容层 | `include/shmipc/{listener,stream_connection}.hpp`, `src/{listener,stream_connection}.cpp`, `tests/public_listener_test.cpp` | `API-002` |
 | C++ SessionManager、Stream pool 与重连 | `include/shmipc/session_manager.hpp`, `src/session_manager.cpp`, `tests/public_session_manager_test.cpp` | `API-002`, `NFR-002` |
+| C++ 指标、日志与 shutdown flush | `include/shmipc/session.hpp`, `src/{session,listener,session_manager}.cpp`, `tests/public_observability_test.cpp` | `OBS-001` |
 | 热重启 | `session_manager.go`, `listener.go` | `OPS-001`, `S-0601` |
-| 性能与稳定性指标 | `stats.go`, `bench_test.go` | `NFR-003`, `OBS-001` |
+| Go 性能基准 | `bench_test.go` | `NFR-003` |
 
 ## 分析进度
 
@@ -208,10 +210,11 @@
 - 已完成：`S-0403b` 已由提交 `4b2c7f1` 和 GitHub Actions run `32223456643` 七项门禁关闭。
 - 已完成：`S-0404` 已由提交 `39937bd` 和 GitHub Actions run `32329216783` 七项门禁关闭，M4 正式完成。
 - 已完成：`S-0501` 已由提交 `62ed32f` 实现稳定的 RAII client Session/Stream 公共 API、同步示例及安装后消费者。
-- 进行中：`S-0502` 已实现共享 callback executor、每流串行 pump、RAII subscription 与关闭/异常生命周期；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 19/19 通过，待提交与云端门禁。
-- 进行中：`S-0503` 已实现 Listener、服务端 Session、共享 event loop 与 StreamConnection；本机三套配置、远端 GCC 8.5 Debug/ASan 各 20/20，Listener 专项远端连续 20 轮通过，待提交与云端门禁。
-- 进行中：`S-0504` 已实现 SessionManager、批量 round-robin、FIFO Stream pool、generation 隔离和 per-Session 断线重连；本机四套与远端 Debug/ASan 各 21/21、专项 20 轮和安装消费者通过，待本地提交与云端验证。
-- 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
+- 进行中：`S-0502` 已由提交 `e908fed` 实现共享 callback executor、每流串行 pump、RAII subscription 与关闭/异常生命周期；待云端门禁。
+- 进行中：`S-0503` 已由提交 `cfaffee` 实现 Listener、服务端 Session、共享 event loop 与 StreamConnection；待云端门禁。
+- 进行中：`S-0504` 已由提交 `71c36a5` 实现 SessionManager、批量 round-robin、FIFO Stream pool、generation 隔离和 per-Session 断线重连；待云端门禁。
+- 进行中：`S-0505` 已实现累计指标、Monitor/Logger、周期快照和 shutdown 最终 flush；本机四套与远端 Debug/ASan 各 22/22、远端专项 20 轮和双平台安装消费者通过，待本地提交与云端验证。
+- 部分完成：示例和热重启仅分析到架构/调用层；上游 debug 和工具函数未逐符号记录。
 - 待验证：fallback/close 跨通道协议级 barrier 和更完整的异常注入矩阵。v3 握手、多路数据面、sticky fallback、Session breaker 与生命周期已完成本机、远端和固定 Go 双向验证。
 
 ## 状态标记

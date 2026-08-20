@@ -37,6 +37,24 @@ private:
 struct V2MultiplexedSessionState;
 struct V2StreamState;
 
+struct V2SessionMetrics {
+  std::uint8_t protocol_version{0U};
+  std::uint64_t received_polling_events{0U};
+  std::uint64_t sent_polling_events{0U};
+  std::uint64_t bytes_sent{0U};
+  std::uint64_t bytes_received{0U};
+  std::uint64_t send_queue_depth{0U};
+  std::uint64_t receive_queue_depth{0U};
+  std::uint64_t shared_memory_allocation_errors{0U};
+  std::uint64_t fallback_writes{0U};
+  std::uint64_t fallback_reads{0U};
+  std::uint64_t control_connection_errors{0U};
+  std::uint64_t queue_full_errors{0U};
+  std::uint64_t active_streams{0U};
+  std::uint64_t shared_memory_capacity_bytes{0U};
+  std::uint64_t shared_memory_used_bytes{0U};
+};
+
 class V2Stream final {
 public:
   using Clock = std::chrono::steady_clock;
@@ -120,6 +138,7 @@ public:
   [[nodiscard]] explicit operator bool() const noexcept;
   [[nodiscard]] bool is_open() const noexcept;
   [[nodiscard]] bool is_healthy() const noexcept;
+  [[nodiscard]] V2SessionMetrics metrics() const noexcept;
   [[nodiscard]] V2StreamResult open_stream();
   [[nodiscard]] V2SessionStatus close() noexcept;
 
@@ -169,6 +188,7 @@ public:
   [[nodiscard]] explicit operator bool() const noexcept;
   [[nodiscard]] bool is_open() const noexcept;
   [[nodiscard]] bool is_healthy() const noexcept;
+  [[nodiscard]] V2SessionMetrics metrics() const noexcept;
   [[nodiscard]] V2StreamResult accept_stream(std::chrono::milliseconds timeout);
   [[nodiscard]] V2SessionStatus close() noexcept;
 

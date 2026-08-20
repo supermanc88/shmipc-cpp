@@ -37,6 +37,7 @@ struct ManagerPool final {
 
 bool valid_config(const SessionManagerConfig& config) noexcept {
     return config.session_count != 0U && config.round_robin_batch != 0U &&
+           config.client_config.metrics_interval.count() > 0 &&
            config.reconnect_interval.count() > 0 &&
            config.health_check_interval.count() > 0;
 }
@@ -62,6 +63,10 @@ SessionResult connect_session(EndpointKind kind, const std::string& address,
     return kind == EndpointKind::tcp
                ? connect_tcp(address, port, client)
                : connect_unix(address, client);
+}
+
+std::string pool_component(std::size_t index) {
+    return "session-manager.pool." + std::to_string(index);
 }
 
 void close_streams(std::deque<Stream>& streams) noexcept {
@@ -156,6 +161,11 @@ struct SessionManager::Impl final {
                 auto connected = connect_session(
                     kind, address, port, config, pool->index, next_generation);
                 if (!connected) {
+                    detail::emit_log(config.client_config.logger,
+                                     config.client_config.log_level,
+                                     LogLevel::warning,
+                                     pool_component(pool->index),
+                                     "session reconnect failed");
                     continue;
                 }
                 std::lock_guard<std::mutex> lock(pool->mutex);
@@ -166,6 +176,11 @@ struct SessionManager::Impl final {
                     return;
                 }
                 pool->session = std::move(connected.value);
+                detail::emit_log(config.client_config.logger,
+                                 config.client_config.log_level,
+                                 LogLevel::info,
+                                 pool_component(pool->index),
+                                 "session reconnected");
                 break;
             }
         }

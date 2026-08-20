@@ -2,7 +2,7 @@
 
 ## Purpose
 
-实现公共 client/server Session 与同步操作适配层：归一化内部错误，校验 client 配置，选择 v2 file 或 v3 memfd handshake，并以共享 EventLoop 持有内部 Session。异步执行器实现在 `src/callback.cpp`，服务监听实现在 `src/listener.cpp`。
+实现公共 client/server Session 与同步/观测适配层：归一化内部错误，校验 client 配置，选择 v2 file 或 v3 memfd handshake，以共享 EventLoop 持有内部 Session，并管理 per-Session 指标 worker 与日志隔离。异步执行器实现在 `src/callback.cpp`，服务监听实现在 `src/listener.cpp`。
 
 ## Key Symbols
 
@@ -11,6 +11,8 @@
 - `Stream::close`：发布公共关闭状态、关闭内部 Stream，并在普通线程等待已注册 callback 完成。
 - `Stream::is_open`：同时检查公共 close 标志与核心连接/Stream 状态，供池化 lease 和应用观察生命周期。
 - `Session::Impl`：持有共享 EventLoop 与 client/server 内部 Session variant，并提供角色判断。
+- `Session::Impl::metrics/telemetry_loop/stop_telemetry`：映射累计核心计数，周期上报，并在 shutdown 时完成最终 snapshot→flush。
+- `detail::emit_log`：应用阈值、调用 Logger 并吞掉用户异常，不让诊断后端破坏数据面。
 - `Session::start`：接管原生 socket descriptor，立即恢复为 `ControlSocket` RAII owner，启动 dispatcher，并按 mode 选择 v2/v3 client Session。
 - `connect_tcp/connect_unix`：连接前配置/mode 门禁和 control socket 创建入口。
 
@@ -21,7 +23,7 @@
 3. 启动 dispatcher，file/memfd 分别构造内部 v2/v3 配置并运行 handshake。
 4. 成功后 PImpl 共享持有 EventLoop 并接管内部 Session；失败时局部 owner 自动 stop/close/unmap。
 5. client `open_stream` 或 server `accept_stream` 将内部 move-only Stream 包入 shared public PImpl；错误角色返回 unsupported。
-6. `Session::close` 先关闭内部连接和 Stream state，再释放自己的 EventLoop owner；最后一个 owner 才 stop/join。重复 close 成功。
+6. `Session::close` 先停止/join 指标 worker；worker 在映射仍有效时发送最终快照并 flush，然后关闭内部连接和 Stream state，再释放 EventLoop owner。重复 close 成功。
 
 ## Invariants
 
@@ -30,6 +32,7 @@
 - v2/v3 当前共享同一内部多路类型是实现细节，public layout 与名称不依赖该别名。
 - Listener 与多个 accepted Session 可共享 EventLoop；Listener 关闭不停止仍被 Session 持有的 dispatcher。
 - `Stream::Impl` 的唯一结构定义位于 `src/public/session_impl.hpp`，同步层与 callback 层共享，公共头仍只暴露不完整类型。
+- 每个受监控 Session 只有一个 worker；Monitor/Logger 可由多个 worker 并发调用，线程安全责任属于实现者。emit/flush/Logger 失败均隔离，只有真实 Session close 错误从 `Session::close` 返回。
 
 ## Evidence
 
@@ -39,6 +42,7 @@
 - EventLoop/Session variant：`src/public/session_impl.hpp:44-75`。
 - `tests/public_session_test.cpp`：真实 Linux v2/v3 round-trip、错误 surface 与 RAII 清理。
 - `CMakeLists.txt:12-81`、`cmake/shmipcConfig.cmake.in`：Threads public dependency、构建/安装入口。
+- `tests/public_observability_test.cpp`：client/server 周期与最终上报、累计计数、fallback 日志、flush 失败隔离。
 
 ## Links
 

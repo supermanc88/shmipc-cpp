@@ -2,7 +2,7 @@
 
 ## Summary
 
-当前仓库已建立 C++17/CMake 可安装库，并已加入控制协议 codec、共享布局、RAII mapping、跨进程原子 buffer pool、零拷贝 Buffer IO、MPSC queue、Unix/TCP control socket、Linux epoll 事件层，以及版本无关的 RAII Session/Stream/Listener、SessionManager、字节流适配与异步 callback 公共 API。
+当前仓库已建立 C++17/CMake 可安装库，并已加入控制协议 codec、共享布局、RAII mapping、跨进程原子 buffer pool、零拷贝 Buffer IO、MPSC queue、Unix/TCP control socket、Linux epoll 事件层，以及版本无关的 RAII Session/Stream/Listener、SessionManager、字节流适配、异步 callback、指标与日志公共 API。
 
 ## Directory Contents（深度=1）
 
@@ -55,10 +55,12 @@
 - `src/callback.cpp:56-443` 与 `src/public/session_impl.hpp:10-27` 实现共享线程池、每流串行 pump、subscription 和关闭等待；公共集成专项 20 轮、本机三套 sanitizer、远端 Debug/ASan 19/19 通过。
 - `src/listener.cpp:58-259`、`src/public/session_impl.hpp:44-75` 实现 nonblocking accept、v2/v3 服务端启动和 Listener/accepted Session 共享 EventLoop；`src/stream_connection.cpp:14-140` 实现跨消息字节流读取。远端专项 20 轮、Debug/ASan 20/20 与安装消费者通过。
 - `include/shmipc/session_manager.hpp:13-104` 与 `src/session_manager.cpp:20-378` 实现批量 round-robin、每 Session FIFO Stream pool、generation 隔离和独立重连 worker；公共测试覆盖池容量、重连和并发 close/get。
+- `include/shmipc/session.hpp`、`src/session.cpp` 与 `tests/public_observability_test.cpp` 实现累计性能/稳定性/共享内存快照、线程安全 Monitor/Logger 注入、周期上报及资源释放前最终 flush；观测失败不改变传输关闭结果。
+- `S-0505` 本机 Debug/Release/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 22/22，远端可观测性专项连续 20 轮及 macOS/Linux 安装消费者通过。
 
 ## Guesses & Uncertainties
 
-- 当前产物为静态库；最终是否同时发布动态库以及 ABI 稳定级别仍待确认。SessionManager 已完成本机/远端专项验证，热重启和可观测性仍属后续切片。
+- 当前产物为静态库；最终是否同时发布动态库以及 ABI 稳定级别仍待确认。SessionManager 与可观测性已完成本机/远端专项验证，热重启仍属后续切片。
 - 推荐目录和里程碑见 [移植计划](../../docs/SHMIPC_CPP_PORTING_PLAN.md)。
 - 远程 Linux 同步、构建和测试见 [项目工作流](../../docs/PROJECT_WORKFLOW.md)。
 

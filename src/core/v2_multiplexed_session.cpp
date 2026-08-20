@@ -98,11 +98,15 @@ struct V2StreamState final {
 struct V2MultiplexedSessionState final : transport::ControlEventCallback {
   V2MultiplexedSessionState(V2SharedMemory &&memory, bool server) noexcept
       : shared_memory(std::in_place_type<V2SharedMemory>, std::move(memory)),
-        protocol_version(v2_protocol_version), is_server(server) {}
+        protocol_version(v2_protocol_version), is_server(server) {
+    shared_memory_capacity_bytes = buffer_pool().capacity_bytes();
+  }
 
   V2MultiplexedSessionState(V3SharedMemory &&memory, bool server) noexcept
       : shared_memory(std::in_place_type<V3SharedMemory>, std::move(memory)),
-        protocol_version(v3_protocol_version), is_server(server) {}
+        protocol_version(v3_protocol_version), is_server(server) {
+    shared_memory_capacity_bytes = buffer_pool().capacity_bytes();
+  }
 
   shm::BufferPool &buffer_pool() noexcept {
     return std::visit(
@@ -146,6 +150,7 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
       V2SessionStatus status{};
       if (header.value.type == protocol::EventType::polling &&
           header.value.length == protocol::header_size) {
+        received_polling_events.fetch_add(1U, std::memory_order_relaxed);
         status = drain_receive_queue();
       } else if (header.value.type == protocol::EventType::fallback_data) {
         const auto fallback = protocol::decode_fallback_data(
@@ -157,6 +162,7 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
           status = make_session_error(V2SessionError::unexpected_event);
         } else {
           circuit_breaker.open();
+          fallback_reads.fetch_add(1U, std::memory_order_relaxed);
           status = deliver_message(fallback.value.stream_id,
                                    std::move(fallback.value.payload), true);
         }
@@ -175,7 +181,12 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
     return {consumed, transport::TransportError::none, 0};
   }
 
-  void on_close(transport::ConnectionCloseReason, int system_error) override {
+  void on_close(transport::ConnectionCloseReason reason,
+                int system_error) override {
+    if (reason != transport::ConnectionCloseReason::local &&
+        reason != transport::ConnectionCloseReason::dispatcher_shutdown) {
+      control_connection_errors.fetch_add(1U, std::memory_order_relaxed);
+    }
     auto status = make_session_error(V2SessionError::closed);
     if (system_error != 0) {
       status = make_session_error(V2SessionError::transport_error);
@@ -352,6 +363,39 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
     }
   }
 
+  V2SessionMetrics metrics() {
+    V2SessionMetrics result;
+    result.protocol_version = protocol_version;
+    result.received_polling_events =
+        received_polling_events.load(std::memory_order_relaxed);
+    result.sent_polling_events =
+        sent_polling_events.load(std::memory_order_relaxed);
+    result.bytes_sent = bytes_sent.load(std::memory_order_relaxed);
+    result.bytes_received = bytes_received.load(std::memory_order_relaxed);
+    result.shared_memory_allocation_errors =
+        shared_memory_allocation_errors.load(std::memory_order_relaxed);
+    result.fallback_writes =
+        fallback_writes.load(std::memory_order_relaxed);
+    result.fallback_reads = fallback_reads.load(std::memory_order_relaxed);
+    result.control_connection_errors =
+        control_connection_errors.load(std::memory_order_relaxed);
+    result.queue_full_errors =
+        queue_full_errors.load(std::memory_order_relaxed);
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      result.active_streams = streams.size();
+    }
+    const auto send_depth = send_queue().size();
+    const auto receive_depth = receive_queue().size();
+    result.send_queue_depth =
+        send_depth > 0 ? static_cast<std::uint64_t>(send_depth) : 0U;
+    result.receive_queue_depth =
+        receive_depth > 0 ? static_cast<std::uint64_t>(receive_depth) : 0U;
+    result.shared_memory_capacity_bytes = shared_memory_capacity_bytes;
+    result.shared_memory_used_bytes = buffer_pool().used_bytes();
+    return result;
+  }
+
   std::variant<V2SharedMemory, V3SharedMemory> shared_memory;
   const std::uint8_t protocol_version;
   const bool is_server;
@@ -363,6 +407,16 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
   V2SessionStatus failure{};
   bool closed{false};
   std::uint32_t next_stream_id{1U};
+  std::uint64_t shared_memory_capacity_bytes{0U};
+  std::atomic<std::uint64_t> received_polling_events{0U};
+  std::atomic<std::uint64_t> sent_polling_events{0U};
+  std::atomic<std::uint64_t> bytes_sent{0U};
+  std::atomic<std::uint64_t> bytes_received{0U};
+  std::atomic<std::uint64_t> shared_memory_allocation_errors{0U};
+  std::atomic<std::uint64_t> fallback_writes{0U};
+  std::atomic<std::uint64_t> fallback_reads{0U};
+  std::atomic<std::uint64_t> control_connection_errors{0U};
+  std::atomic<std::uint64_t> queue_full_errors{0U};
 };
 
 namespace {
@@ -383,6 +437,7 @@ notify_peer(V2MultiplexedSessionState &state,
   }
   const auto result =
       connection->write(polling.value.data(), polling.value.size());
+  state.sent_polling_events.fetch_add(1U, std::memory_order_relaxed);
   return result ? V2SessionStatus{} : make_transport_error(result);
 }
 
@@ -399,6 +454,9 @@ V2SessionStatus put_data_with_retry(V2MultiplexedSessionState &session,
                                     V2StreamState &stream,
                                     const shm::QueueElement &element) {
   auto queued = session.send_queue().put(element);
+  if (queued == shm::QueueError::full) {
+    session.queue_full_errors.fetch_add(1U, std::memory_order_relaxed);
+  }
   for (std::size_t attempt = 0U;
        queued == shm::QueueError::full && attempt < 10U; ++attempt) {
     std::unique_lock<std::mutex> lock(stream.mutex);
@@ -542,14 +600,18 @@ V2SessionStatus V2Stream::send(const std::uint8_t *data, std::size_t size) {
     }
     fallback = stream_->fallback;
   }
+  session_->bytes_sent.fetch_add(size, std::memory_order_relaxed);
   if (fallback) {
     session_->circuit_breaker.open();
+    session_->fallback_writes.fetch_add(1U, std::memory_order_relaxed);
     return send_fallback_data(session_->protocol_version, stream_->id, data,
                               size, connection_);
   }
   shm::BufferWriter writer(session_->buffer_pool());
   const auto written = writer.write_bytes(data, size);
   if (!written) {
+    session_->shared_memory_allocation_errors.fetch_add(
+        1U, std::memory_order_relaxed);
     if (written.error == shm::BufferIoError::no_buffer) {
       {
         std::lock_guard<std::mutex> lock(stream_->mutex);
@@ -562,6 +624,7 @@ V2SessionStatus V2Stream::send(const std::uint8_t *data, std::size_t size) {
         stream_->fallback = true;
       }
       session_->circuit_breaker.open();
+      session_->fallback_writes.fetch_add(1U, std::memory_order_relaxed);
       return send_fallback_data(session_->protocol_version, stream_->id, data,
                                 size, connection_);
     }
@@ -636,6 +699,8 @@ V2Stream::MessageResult V2Stream::receive(std::chrono::milliseconds timeout) {
     if (message.fallback) {
       stream_->fallback = true;
     }
+    session_->bytes_received.fetch_add(message.data.size(),
+                                       std::memory_order_relaxed);
     return {std::move(message.data), {}};
   }
   if (!stream_->failure) {
@@ -711,6 +776,7 @@ V2SessionStatus V2Stream::close() {
     if (queued == shm::QueueError::none) {
       status = notify_peer(*session_, connection_);
     } else if (queued == shm::QueueError::full) {
+      session_->queue_full_errors.fetch_add(1U, std::memory_order_relaxed);
       status = send_stream_close_fallback(
           session_->protocol_version, stream_->id, connection_);
     } else {
@@ -804,6 +870,10 @@ bool V2MultiplexedClientSession::is_healthy() const noexcept {
   return state_ && state_->circuit_breaker.is_healthy();
 }
 
+V2SessionMetrics V2MultiplexedClientSession::metrics() const noexcept {
+  return state_ ? state_->metrics() : V2SessionMetrics{};
+}
+
 V2StreamResult V2MultiplexedClientSession::open_stream() {
   if (!state_ || !connection_) {
     return {{}, make_session_error(V2SessionError::invalid_argument)};
@@ -862,6 +932,10 @@ bool V2MultiplexedServerSession::is_open() const noexcept {
 
 bool V2MultiplexedServerSession::is_healthy() const noexcept {
   return state_ && state_->circuit_breaker.is_healthy();
+}
+
+V2SessionMetrics V2MultiplexedServerSession::metrics() const noexcept {
+  return state_ ? state_->metrics() : V2SessionMetrics{};
 }
 
 V2StreamResult

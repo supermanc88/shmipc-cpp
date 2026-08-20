@@ -16,6 +16,7 @@
 - `V2MultiplexedSessionState`：实现文件内定义的连接级 callback state，以 variant 拥有 v2/v3 共享资源、协议版本、Stream 路由表、accept 队列与 Session failure。
 - `V2StreamState`：实现文件内定义的 per-Stream 消息队列、条件变量和本地/远端关闭状态。
 - `SessionCircuitBreaker`：以 steady-clock atomic deadline 表示 Session 级 unhealthy 窗口，生产默认 30 秒。
+- `V2SessionMetrics`：内部版本号、流量/轮询/queue gauge、fallback/分配/连接/queue-full 稳定性计数、活动 Stream 和共享内存状态快照。
 
 ## Control Flow
 
@@ -30,6 +31,7 @@
 9. 发送或接收 FallbackData 打开 Session breaker；client `open_stream` 在窗口内返回 `unhealthy`，不消耗 Stream ID，已有 Stream 不受影响。
 10. 消息、远端关闭、Session failure 或本地关闭改变可读状态后复制 notifier 并在 Stream mutex 外调用；注册返回 token，旧订阅清理不能覆盖较新的注册。
 11. SessionManager 归还/取出 Stream 时调用 `reset_for_reuse`；只允许无关闭、失败、fallback、未读消息和 notifier 的 Stream，并清除 deadline/generation。
+12. send/receive、Polling、fallback、分配失败、queue full 与非本地 control close 在发生点更新原子累计计数；`metrics()` 在不改变数据面的前提下读取原子值、路由表/queue gauge 和 pool 容量。
 
 ## Invariants & Boundaries
 
@@ -44,6 +46,7 @@
 - breaker 使用固定 Go 的 30 秒窗口；重复 fallback 不延长已打开窗口。短时长只用于独立状态机单测，不进入 Session 配置。
 - readable notifier 只发布状态变化，不执行用户 callback、不阻塞 event-loop，也不保证一次通知对应一条消息；公共异步 pump 必须主动排空 receive。
 - `is_open` 同时检查控制连接与 per-Stream 状态；pool return 和 checkout 都必须重新验证，避免空闲期远端事件后的错误复用。
+- 指标计数采用 relaxed 原子，因为它们不发布数据面状态；active Stream 在路由 mutex 下读取，queue/pool gauge 使用各自已有共享原子。Session close 后空 handle 返回零快照。
 
 ## Evidence
 
@@ -56,6 +59,7 @@
 - 调试证据：close 无 ACK 的错误测试预期及 helper 过早关闭 Session 的竞态均通过 runtime 日志/退出时序定位，临时插桩已清理。
 - `src/core/v2_multiplexed_session.cpp:270-344,675-740`：四类状态通知、锁外调用与 tokenized 注销；`tests/public_session_test.cpp` 经公共异步 pump 覆盖串行/并行及关闭路径。
 - `src/core/v2_multiplexed_session.cpp:505-514,764-788`：池化所需打开状态与严格 reset；`tests/public_session_manager_test.cpp` 覆盖真实复用、容量和重连。
+- `tests/v2_multiplexed_session_test.cpp` 断言 queue-full、共享内存分配失败、sticky fallback 与远端 control close 计数；`tests/public_observability_test.cpp` 经安装 API 验证完整映射。
 
 ## Links
 

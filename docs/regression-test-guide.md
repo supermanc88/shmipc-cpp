@@ -85,6 +85,7 @@ ssh 23.2 'cd /home/chm/shmipc-cpp && \
 - `shmipc.public_session`：Linux 上仅经公共 client API 验证 TCP/file v2 与 Unix/memfd v3 的 connect/open/send/receive/close、RAII 清理和稳定错误分类；异步部分验证每流串行/跨流并行、重复注册、远端关闭、外部 Close 等待、callback 内 Close 与异常隔离；非 Linux 明确验证 event loop unsupported。
 - `shmipc.public_listener`：Linux 上仅经公共 API 验证 TCP/file v2、Unix/memfd v3、角色限制、accept timeout/close 唤醒、Listener 关闭后 accepted Session 延续，以及 StreamConnection 未读后缀和跨消息读取；非 Linux 明确验证 event loop unsupported。
 - `shmipc.public_session_manager`：验证两个 Session 的 batched round-robin 与 FIFO Stream 复用、池容量关闭、TCP 断线 generation 重连、非法配置，以及 `close/get_stream` 并发生命周期。
+- `shmipc.public_observability`：验证累计流量/轮询/fallback/分配错误/活动 Stream/共享内存指标，Monitor 周期与关闭前最终快照/flush，Logger 阈值与观测错误隔离。
 - `shmipc.go_protocol_oracle`：除控制协议与布局外，调用真实 C++ helpers 双向传递 slice chain/queue elements；验证两个方向的 v3 版本协商、memfd 资源握手和完整多路 Session 数据面，并在 Linux 验证 v2/v3 shared→fallback→sticky→反向 fallback ACK，以及两端 Session unhealthy 后拒绝新 Stream、已有 Stream 继续工作。
 - 任一 commit mismatch、缺行、重复/错序事件或字节差异均为失败，不允许自动更新 golden 后绕过评审。
 
@@ -102,7 +103,7 @@ callback、Listener 或 SessionManager 生命周期变更后，额外连续运�
 
 ```bash
 ctest --test-dir build/debug \
-  -R 'shmipc.public_listener|shmipc.public_session|shmipc.public_session_manager|shmipc.v2_multiplexed_session' \
+  -R 'shmipc.public_listener|shmipc.public_session|shmipc.public_session_manager|shmipc.public_observability|shmipc.v2_multiplexed_session' \
   --output-on-failure --repeat until-fail:20
 ```
 

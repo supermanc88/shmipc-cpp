@@ -114,7 +114,7 @@
 
 - Go 参考实现构建入口：`go.mod`，Go 1.20。
 - C++ 构建入口：根目录 `CMakeLists.txt`，最低 CMake 3.16、C++17；产物 target 为 `shmipc`/`shmipc::shmipc`，支持 CTest、install/export 及 `find_package(shmipc)` package 配置。
-- C++ 公共 client/server 入口：`include/shmipc/session.hpp`、`listener.hpp` 与 `session_manager.hpp`。connect 返回 client Session，Listener accept 返回 server Session；SessionManager 以批量 round-robin 在多个 client Session 间选路，以 RAII lease 管理有界 FIFO Stream pool，并为每个 Session 独立重连。PImpl 隔离 v2/v3 等内部类型；可选 CallbackExecutor 提供每 Stream 串行 callback。
+- C++ 公共 client/server 入口：`include/shmipc/session.hpp`、`listener.hpp` 与 `session_manager.hpp`。connect 返回 client Session，Listener accept 返回 server Session；SessionManager 以批量 round-robin 在多个 client Session 间选路，以 RAII lease 管理有界 FIFO Stream pool，并为每个 Session 独立重连。PImpl 隔离 v2/v3 等内部类型；可选 CallbackExecutor 提供每 Stream 串行 callback。Client/Listener 可注入线程安全 Monitor/Logger；每个受监控 Session 周期上报累计指标，并在释放 transport/mapping 前发送最终快照和 flush。
 - C++ 字节流兼容入口：`include/shmipc/stream_connection.hpp`。一次 write 发布一条消息，read 保留未读后缀并隐藏消息边界；该 copy 路径不替代原生 Stream 的消息/零拷贝语义。
 - C++ 质量入口：`SHMIPC_WARNINGS_AS_ERRORS`、`SHMIPC_ENABLE_ASAN`、`SHMIPC_ENABLE_UBSAN`、`SHMIPC_ENABLE_TSAN`；ASan 与 TSan 在配置阶段互斥。
 - C++ 控制协议入口：`src/protocol/control_codec.hpp`。当前提供 header、事件 0..9、v2/v3 metadata 与 fallback 的大端编解码；以明确错误分类拒绝截断、非法字段、错误事件、尾随字节和超过默认 64 MiB 上限的帧。该接口暂为内部 API。
@@ -125,7 +125,7 @@
 - C++ queue 布局入口：`src/shm/queue_layout.hpp`。以 `memcpy` 对 mmap 字节做本机字节序访问，显式区分 amd64 与 arm64 header offsets。运行期入口 `src/shm/shared_queue.hpp` 只接受本机布局，以本地 mutex 串行化 producers、seq_cst 共享原子发布/消费 element，并实现 batch 与 working flag 状态机。
 - C++ buffer 布局入口：`src/shm/buffer_layout.hpp`。显式定义 8 字节 manager、36 字节 list 与 20 字节 slice header；creator 与 mapper 的本地净 pop/push counters 分别位于 `+20/+24`，普通布局访问使用 `memcpy`。
 - C++ mapping 入口：`src/shm/shared_memory_region.hpp`。move-only owner 统一管理 `munmap`、memfd descriptor 与创建端路径清理；文件 mapper 不 unlink，memfd API 显式区分 borrowed/transferred descriptor。
-- C++ buffer pool 入口：`src/shm/buffer_pool.hpp`。单 slice 从最小合适档位开始，chain 从最大档位向下分配；size/head/tail/counters 使用 lock-free seq_cst 原子，publish/adopt 以绝对 offset 在进程间转移链式 slice 所有权。
+- C++ buffer pool 入口：`src/shm/buffer_pool.hpp`。单 slice 从最小合适档位开始，chain 从最大档位向下分配；size/head/tail/counters 使用 lock-free seq_cst 原子，publish/adopt 以绝对 offset 在进程间转移链式 slice 所有权；capacity/used 指标按固定 Go 的 list capacity 与原子 free size 口径计算。
 - C++ Buffer IO 入口：`src/shm/buffer_io.hpp`。Writer 复现 Go 的最大档位连续分配策略并发布 chain；Reader 对单片返回 pinned 借用 view、对跨片返回 owned copy，`release_previous_read` 与 RAII 析构负责回收。
 - C++ control transport 入口：`src/transport/control_socket.hpp` 与 `epoll_dispatcher.hpp`。握手期使用 move-only Unix/TCP socket、exact blocking IO 和 Linux SCM_RIGHTS；事件期切换 nonblocking edge-triggered epoll，以消费式缓冲 callback、串行写和 eventfd 停止管理连接。
 - Go oracle 入口：`go run tools/go_oracle/run_control_header_oracle.go`；严格校验 submodule commit 后，以 overlay 调用上游 header、metadata 与 fallback 编码器核对三份 golden。CMake 可通过 `SHMIPC_ENABLE_GO_ORACLE_TESTS=ON` 将其加入 CTest。

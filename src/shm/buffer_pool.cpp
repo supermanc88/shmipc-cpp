@@ -162,6 +162,31 @@ std::uint32_t BufferPool::max_slice_capacity() const noexcept {
 
 std::size_t BufferPool::used_size() const noexcept { return used_size_; }
 
+std::uint64_t BufferPool::capacity_bytes() const noexcept {
+    std::uint64_t result = 0U;
+    for (const auto& list : lists_) {
+        result += static_cast<std::uint64_t>(list.capacity) *
+                  list.capacity_per_buffer;
+    }
+    return result;
+}
+
+std::uint64_t BufferPool::used_bytes() const noexcept {
+    std::uint64_t result = 0U;
+    for (const auto& list : lists_) {
+        const auto* const list_memory = memory_ + list.offset;
+        const auto free_count = detail::atomic_load(list_size_word(list_memory));
+        if (free_count < 0 ||
+            static_cast<std::uint32_t>(free_count) > list.capacity) {
+            continue;
+        }
+        result += static_cast<std::uint64_t>(
+                      list.capacity - static_cast<std::uint32_t>(free_count)) *
+                  list.capacity_per_buffer;
+    }
+    return result;
+}
+
 std::uint64_t BufferPool::available_bytes() const noexcept {
     std::uint64_t result = 0;
     for (const auto& list : lists_) {

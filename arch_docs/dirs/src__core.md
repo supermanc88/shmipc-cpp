@@ -2,7 +2,7 @@
 
 ## Summary
 
-组合 protocol、transport 与 shm 子系统形成可执行的会话初始化和数据路径。当前实现 v2 文件路径握手、完整 v3 memfd 资源握手、client/server 单 Stream 基线，以及由 v2/v3 共用、带 deadline、sticky fallback、Session breaker、queue-full retry、错误扇出和非阻塞 readable notifier 的 client-originated 多 Stream Session。
+组合 protocol、transport 与 shm 子系统形成可执行的会话初始化和数据路径。当前实现 v2 文件路径握手、完整 v3 memfd 资源握手、client/server 单 Stream 基线，以及由 v2/v3 共用、带 deadline、sticky fallback、Session breaker、queue-full retry、错误扇出、非阻塞 readable notifier 和累计运行指标的 client-originated 多 Stream Session。
 
 ## Directory Contents
 
@@ -17,8 +17,8 @@
 | `v2_client_session.hpp` | 内部头文件 | ✅ | 单 client Session/Stream API、状态与错误模型 |
 | `v2_client_session.cpp` | C++ 实现 | ✅ | epoll callback、queue/buffer 数据面、Polling 与关闭 |
 | `v2_server_session.hpp` | 内部头文件 | ✅ | server 动态绑定首个远端 Stream、收发与关闭 API |
-| `v2_multiplexed_session.hpp` | 内部头文件 | ✅ | v2/v3 多路 Session、独立 Stream、circuit breaker 与 tokenized notifier |
-| `v2_multiplexed_session.cpp` | C++ 实现 | ✅ | 资源 variant、版本化控制帧、路由/accept、sticky fallback、unhealthy 窗口、通知与生命周期 |
+| `v2_multiplexed_session.hpp` | 内部头文件 | ✅ | v2/v3 多路 Session、独立 Stream、circuit breaker、指标与 tokenized notifier |
+| `v2_multiplexed_session.cpp` | C++ 实现 | ✅ | 路由/accept、sticky fallback、unhealthy 窗口、原子指标、通知与生命周期 |
 
 ## Invariants
 
@@ -35,6 +35,7 @@
 - 多路实现只支持 client 主动开流，不承诺固定 Go 尚未实现的双向开流。
 - 多路 Stream 实现 persistent deadline 与 queue-full retry；buffer `no_buffer` 触发 per-Stream sticky FallbackData，queue full 不触发数据 fallback。Session 初始化超时仍由后续切片处理。
 - per-Stream readable notifier 只在锁外发布状态变化，不运行用户 callback；公共异步层负责排空、串行化与生命周期等待。
+- 运行计数只用 relaxed 原子采样，不参与协议同步；queue/pool/active Stream gauge 从各自已有同步边界读取。
 
 ## Evidence
 
@@ -53,6 +54,7 @@
 - `S-0404` 在同一矩阵验证 v2/v3 两端 fallback 后 Session unhealthy、拒绝新 Stream、已有 Stream 完成 ACK/close；短窗口单测验证重复触发不延长和恢复后可重新打开。
 - `src/session.cpp` 通过 PImpl 复用本目录的多路 client Session；公共测试以 v2 TCP/file 和 v3 Unix/memfd 两条真实链路验证适配不改变内部协议行为。
 - `src/callback.cpp` 通过 tokenized notifier 驱动每 Stream 串行 pump；公共测试覆盖跨流并行、关闭等待、callback 内关闭和异常隔离。
+- `tests/v2_multiplexed_session_test.cpp` 与 `tests/public_observability_test.cpp` 覆盖流量、Polling、fallback、分配/queue/control 错误及活动 Stream 指标。
 - 提交 `78913e6` 的 GitHub Actions run `32204938990` 七项门禁全部成功，Go protocol oracle CTest 为 16/16；`S-0305a/b` 与 M3 正式关闭。
 
 ## Links

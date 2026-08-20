@@ -161,6 +161,13 @@ shmipc_apply_project_options(shmipc_public_session_manager_test)
 add_test(NAME shmipc.public_session_manager
          COMMAND shmipc_public_session_manager_test)
 
+add_executable(shmipc_public_observability_test public_observability_test.cpp)
+target_link_libraries(shmipc_public_observability_test
+                      PRIVATE shmipc::shmipc Threads::Threads)
+shmipc_apply_project_options(shmipc_public_observability_test)
+add_test(NAME shmipc.public_observability
+         COMMAND shmipc_public_observability_test)
+
 add_executable(shmipc_buffer_pool_interop_helper buffer_pool_interop_helper.cpp)
 target_link_libraries(shmipc_buffer_pool_interop_helper PRIVATE shmipc::shmipc)
 target_include_directories(shmipc_buffer_pool_interop_helper PRIVATE ${PROJECT_SOURCE_DIR}/src)

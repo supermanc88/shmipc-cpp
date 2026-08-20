@@ -58,7 +58,7 @@
 | `API-002` | Listener 与 SessionManager | Listener、服务端 Session、StreamConnection、SessionManager/Stream pool/断线重建均已完成本机/远端完整验证，待云端门禁 | M5 |
 | `API-003` | 异步 callback API | 共享 executor、每流串行 pump、RAII subscription 和关闭/异常生命周期已完成本机/远端验证，待云端门禁 | `S-0502` |
 | `OPS-001` | 热重启 | 未开始 | `S-0601` |
-| `OBS-001` | 指标与日志 | 未开始 | M5 |
+| `OBS-001` | 指标与日志 | 累计性能/稳定性与共享内存指标、可配置线程安全 Monitor/Logger、周期快照和关闭前最终 flush 已完成本机/远端验证，待云端门禁 | `S-0505` |
 | `NFR-001` | Linux x86_64/arm64 | x86_64 构建基线已验证 | M2 起补 arm64 |
 | `NFR-002` | 内存与并发安全 | 门禁已验证，功能待实现 | 全程 |
 | `NFR-003` | 性能目标 | 未开始 | M5 |

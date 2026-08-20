@@ -13,6 +13,10 @@ struct ListenerConfig {
     SharedMemoryMode shared_memory_mode{SharedMemoryMode::file};
     int backlog{128};
     std::uint32_t max_handshake_frame_length{64U * 1024U * 1024U + 8U};
+    std::shared_ptr<Monitor> monitor{};
+    std::chrono::milliseconds metrics_interval{30000};
+    std::shared_ptr<Logger> logger{};
+    LogLevel log_level{LogLevel::warning};
 };
 
 struct ListenerResult;

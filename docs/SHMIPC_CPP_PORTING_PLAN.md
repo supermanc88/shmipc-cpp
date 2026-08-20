@@ -214,7 +214,7 @@ tools/
 - `S-0502`（已完成本机/远端验证，待云端门禁）：共享 callback executor、每 Stream 串行 pump、RAII subscription、callback 内 Close、异常隔离和销毁等待；设计见 [ADR-0002](adr/0002-async-callback-executor.md)。
 - `S-0503`（已完成本机/远端验证，待云端门禁）：move-only Listener、服务端 Session/AcceptStream、共享 event loop 与 copy-based StreamConnection；设计见 [ADR-0003](adr/0003-listener-event-loop.md)。
 - `S-0504`（已完成本机/远端验证，待云端门禁）：SessionManager、批量 round-robin、RAII Stream lease、有界 FIFO pool、generation 隔离与 per-Session 断线重建。
-- `S-0505`：指标、日志和 shutdown flush。
+- `S-0505`（已完成本机/远端验证，待云端门禁）：累计指标快照、可配置 Monitor/Logger、周期上报和 shutdown 前最终 flush；观测后端错误被记录但不改变传输关闭结果。
 
 退出条件：API 示例与集成测试通过；所有权/线程安全/错误契约有文档；无已知资源泄漏。
 

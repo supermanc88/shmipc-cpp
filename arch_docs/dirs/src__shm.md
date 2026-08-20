@@ -14,8 +14,8 @@
 | `shared_queue.cpp` | C++ 实现 | ✅ | 本地 producer mutex、共享 64 位原子与唤醒状态机 |
 | `buffer_layout.hpp` | 内部头文件 | ✅ | manager/list/slice 类型、角色 counter 和访问接口 |
 | `buffer_layout.cpp` | C++ 实现 | ✅ | buffer native-endian 访问与 checked region size |
-| `buffer_pool.hpp` | 内部头文件 | ✅ | 分级 pool、move-only allocation token 与错误接口 |
-| `buffer_pool.cpp` | C++ 实现 | ✅ | 原子分配回收、链式 publish/adopt 和完整性检查 |
+| `buffer_pool.hpp` | 内部头文件 | ✅ | 分级 pool、容量/已用快照、move-only allocation token 与错误接口 |
+| `buffer_pool.cpp` | C++ 实现 | ✅ | 原子分配回收、链式 publish/adopt、指标和完整性检查 |
 | `buffer_io.hpp` | 内部头文件 | ✅ | Writer/Reader、借用/拥有 view、pin/release 与错误接口 |
 | `buffer_io.cpp` | C++ 实现 | ✅ | 分档写入、单片零拷贝、跨片复制与 RAII 回收 |
 | `atomic_word.hpp` | 内部头文件 | ✅ | always-lock-free 32/64 位 seq_cst 共享原子 primitive |
@@ -53,6 +53,7 @@
 - borrowed memfd 会先复制 FD，transferred memfd 从调用入口起接管 FD；两种路径都设置/保留 close-on-exec 语义。
 - 每个 buffer list 保留一个 sentinel，分配按最小合适档位开始并在耗尽后尝试更大档位；回收 token 必须匹配 memory、list 和 creator/mapper 角色。
 - pool 的 size/head/tail/counters 使用 lock-free seq_cst 32 位原子；tier capacity 与 list 起点必须保持 4 字节对齐。
+- 指标 capacity 包含每 list sentinel，used 由声明 capacity 减原子 size 计算；实际可分配 available 仍排除 sentinel。
 - slice 普通字段先写完，再通过原子 size 发布；消费者只有成功 CAS head 后才取得 slice 独占权。
 - chain next offset 是共享内存绝对 offset，与 free-list 内部使用的 list-relative offset 不同。
 - Writer 对大请求持续使用最大档位，尾部才降档；这与 Go `allocShmBuffers` 一致。

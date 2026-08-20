@@ -6,7 +6,7 @@
 
 ## Exports（全量）
 
-- `ListenerConfig`：共享内存模式、backlog 和公开握手帧上限。
+- `ListenerConfig`：共享内存模式、backlog、公开握手帧上限，以及 accepted Session 共用的 Monitor/Logger/上报周期配置。
 - `Listener`：有效性、绑定端口、限时 `accept_session` 与幂等 `close`。
 - `ListenerResult`：Listener 与稳定 `Status`。
 - `listen_tcp`、`listen_unix`：TCP/Unix 工厂；TCP 不支持 memfd。
@@ -16,6 +16,7 @@
 - accept timeout 仅覆盖等待控制连接，握手在 accept 后同步完成。
 - Listener 关闭只停止新连接，不关闭已经 accepted 的 Session。
 - 类型不可复制、可 noexcept 移动；公共头不依赖内部 v2/v3 类型。
+- 每个 accepted Session 独立生成 ID 和指标生命周期；配置中的 Monitor/Logger 可共享且必须线程安全。
 
 ## Evidence
 

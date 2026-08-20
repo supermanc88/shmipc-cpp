@@ -5,6 +5,7 @@
 #include "transport/control_socket.hpp"
 #include "transport/epoll_dispatcher.hpp"
 
+#include <atomic>
 #include <cerrno>
 #include <limits>
 #include <unordered_set>
@@ -84,6 +85,19 @@ Status map_v3_handshake_status(const core::V3HandshakeStatus& status) noexcept {
     }
 }
 
+void emit_log(const std::shared_ptr<Logger>& logger, LogLevel threshold,
+              LogLevel level, const std::string& component,
+              const std::string& message) noexcept {
+    if (logger == nullptr || threshold == LogLevel::off ||
+        static_cast<int>(level) < static_cast<int>(threshold)) {
+        return;
+    }
+    try {
+        logger->log(level, component, message);
+    } catch (...) {
+    }
+}
+
 }  // namespace detail
 
 namespace {
@@ -93,12 +107,39 @@ using detail::map_session_status;
 using detail::map_transport_status;
 using detail::map_v3_handshake_status;
 
+std::atomic<std::uint64_t> next_session_id{0U};
+
+void emit_session_log(const std::shared_ptr<Logger>& logger,
+                      LogLevel threshold, LogLevel level,
+                      std::uint64_t session_id,
+                      const char* message) noexcept {
+    try {
+        detail::emit_log(logger, threshold, level,
+                         "session." + std::to_string(session_id), message);
+    } catch (...) {
+    }
+}
+
+void emit_stream_log(const std::shared_ptr<Logger>& logger,
+                     LogLevel threshold, LogLevel level,
+                     std::uint64_t session_id, std::uint32_t stream_id,
+                     const char* message) noexcept {
+    try {
+        detail::emit_log(logger, threshold, level,
+                         "session." + std::to_string(session_id) +
+                             ".stream." + std::to_string(stream_id),
+                         message);
+    } catch (...) {
+    }
+}
+
 bool valid_config(const ClientConfig& config) {
     if (config.queue_name.empty() || config.buffer_name.empty() ||
         config.queue_name == config.buffer_name ||
         config.queue_capacity == 0U || config.buffer_size < (1U << 20U) ||
         config.buffer_size > std::numeric_limits<std::uint32_t>::max() ||
         config.buffer_tiers.empty() ||
+        config.metrics_interval.count() <= 0 ||
         config.buffer_tiers.size() >
             std::numeric_limits<std::uint16_t>::max()) {
         return false;
@@ -163,6 +204,147 @@ const char* to_string(Error error) noexcept {
     return "unknown error";
 }
 
+const char* to_string(LogLevel level) noexcept {
+    switch (level) {
+        case LogLevel::trace:
+            return "trace";
+        case LogLevel::debug:
+            return "debug";
+        case LogLevel::info:
+            return "info";
+        case LogLevel::warning:
+            return "warning";
+        case LogLevel::error:
+            return "error";
+        case LogLevel::off:
+            return "off";
+    }
+    return "unknown";
+}
+
+Session::Impl::Impl(std::shared_ptr<EventLoop> loop,
+                    core::V2MultiplexedClientSession&& value,
+                    std::shared_ptr<Monitor> session_monitor,
+                    std::chrono::milliseconds interval,
+                    std::shared_ptr<Logger> session_logger,
+                    LogLevel session_log_level)
+    : event_loop(std::move(loop)),
+      session(std::move(value)),
+      session_id(next_session_id.fetch_add(1U, std::memory_order_relaxed) + 1U),
+      monitor(std::move(session_monitor)),
+      metrics_interval(interval),
+      logger(std::move(session_logger)),
+      log_level(session_log_level) {
+    start_telemetry();
+    emit_session_log(logger, log_level, LogLevel::info, session_id,
+                     "started client session");
+}
+
+Session::Impl::Impl(std::shared_ptr<EventLoop> loop,
+                    core::V2MultiplexedServerSession&& value,
+                    std::shared_ptr<Monitor> session_monitor,
+                    std::chrono::milliseconds interval,
+                    std::shared_ptr<Logger> session_logger,
+                    LogLevel session_log_level)
+    : event_loop(std::move(loop)),
+      session(std::move(value)),
+      session_id(next_session_id.fetch_add(1U, std::memory_order_relaxed) + 1U),
+      monitor(std::move(session_monitor)),
+      metrics_interval(interval),
+      logger(std::move(session_logger)),
+      log_level(session_log_level) {
+    start_telemetry();
+    emit_session_log(logger, log_level, LogLevel::info, session_id,
+                     "started server session");
+}
+
+Session::Impl::~Impl() {
+    stop_telemetry();
+}
+
+SessionMetrics Session::Impl::metrics() const noexcept {
+    const auto internal = std::visit(
+        [](const auto& value) { return value.metrics(); }, session);
+    SessionMetrics result;
+    result.session_id = session_id;
+    result.is_client = is_client();
+    result.protocol_version = internal.protocol_version;
+    result.performance.received_polling_events =
+        internal.received_polling_events;
+    result.performance.sent_polling_events = internal.sent_polling_events;
+    result.performance.bytes_sent = internal.bytes_sent;
+    result.performance.bytes_received = internal.bytes_received;
+    result.performance.send_queue_depth = internal.send_queue_depth;
+    result.performance.receive_queue_depth = internal.receive_queue_depth;
+    result.stability.shared_memory_allocation_errors =
+        internal.shared_memory_allocation_errors;
+    result.stability.fallback_writes = internal.fallback_writes;
+    result.stability.fallback_reads = internal.fallback_reads;
+    result.stability.control_connection_errors =
+        internal.control_connection_errors;
+    result.stability.queue_full_errors = internal.queue_full_errors;
+    result.stability.active_streams = internal.active_streams;
+    result.shared_memory.capacity_bytes =
+        internal.shared_memory_capacity_bytes;
+    result.shared_memory.used_bytes = internal.shared_memory_used_bytes;
+    return result;
+}
+
+void Session::Impl::start_telemetry() {
+    if (monitor != nullptr) {
+        telemetry_worker = std::thread([this] { telemetry_loop(); });
+    }
+}
+
+void Session::Impl::emit_metrics() noexcept {
+    try {
+        monitor->on_session_metrics(metrics());
+    } catch (...) {
+        emit_session_log(logger, log_level, LogLevel::error, session_id,
+                         "monitor metrics callback threw an exception");
+    }
+}
+
+void Session::Impl::telemetry_loop() noexcept {
+    std::unique_lock<std::mutex> lock(telemetry_mutex);
+    while (!telemetry_stopping) {
+        if (telemetry_condition.wait_for(lock, metrics_interval, [this] {
+                return telemetry_stopping;
+            })) {
+            break;
+        }
+        lock.unlock();
+        emit_metrics();
+        lock.lock();
+    }
+    lock.unlock();
+    emit_metrics();
+    Status flushed;
+    try {
+        flushed = monitor->flush();
+    } catch (...) {
+        flushed = make_status(Error::callback_error);
+    }
+    if (!flushed) {
+        emit_session_log(logger, log_level, LogLevel::error, session_id,
+                         "monitor flush failed");
+    }
+}
+
+void Session::Impl::stop_telemetry() noexcept {
+    if (monitor == nullptr) {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(telemetry_mutex);
+        telemetry_stopping = true;
+    }
+    telemetry_condition.notify_all();
+    if (telemetry_worker.joinable()) {
+        telemetry_worker.join();
+    }
+}
+
 Stream::Stream(std::shared_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
 Stream::Stream() noexcept = default;
 Stream::~Stream() = default;
@@ -192,7 +374,14 @@ Status Stream::send(const std::uint8_t* data, std::size_t size) {
     if (impl_ == nullptr) {
         return make_status(Error::closed, EBADF);
     }
-    return map_session_status(impl_->stream.send(data, size));
+    const auto was_fallback = impl_->stream.is_fallback();
+    const auto status = map_session_status(impl_->stream.send(data, size));
+    if (status && !was_fallback && impl_->stream.is_fallback()) {
+        emit_stream_log(impl_->logger, impl_->log_level, LogLevel::warning,
+                        impl_->session_id, impl_->stream.id(),
+                        "entered fallback mode while sending");
+    }
+    return status;
 }
 
 Status Stream::send(const std::vector<std::uint8_t>& data) {
@@ -203,7 +392,13 @@ MessageResult Stream::receive(std::chrono::milliseconds timeout) {
     if (impl_ == nullptr) {
         return {{}, make_status(Error::closed, EBADF)};
     }
+    const auto was_fallback = impl_->stream.is_fallback();
     auto result = impl_->stream.receive(timeout);
+    if (result && !was_fallback && impl_->stream.is_fallback()) {
+        emit_stream_log(impl_->logger, impl_->log_level, LogLevel::warning,
+                        impl_->session_id, impl_->stream.id(),
+                        "entered fallback mode while receiving");
+    }
     return {std::move(result.value), map_session_status(result.status)};
 }
 
@@ -283,6 +478,10 @@ bool Session::is_healthy() const noexcept {
     }, impl_->session);
 }
 
+SessionMetrics Session::metrics() const noexcept {
+    return impl_ == nullptr ? SessionMetrics{} : impl_->metrics();
+}
+
 StreamResult Session::open_stream() {
     if (impl_ == nullptr) {
         return {{}, make_status(Error::closed, EBADF)};
@@ -296,7 +495,9 @@ StreamResult Session::open_stream() {
     if (!result) {
         return {{}, map_session_status(result.status)};
     }
-    return {Stream(std::make_shared<Stream::Impl>(std::move(result.value))), {}};
+    return {Stream(std::make_shared<Stream::Impl>(
+                std::move(result.value), impl_->logger, impl_->log_level,
+                impl_->session_id)), {}};
 }
 
 StreamResult Session::accept_stream(std::chrono::milliseconds timeout) {
@@ -312,18 +513,25 @@ StreamResult Session::accept_stream(std::chrono::milliseconds timeout) {
     if (!result) {
         return {{}, map_session_status(result.status)};
     }
-    return {Stream(std::make_shared<Stream::Impl>(std::move(result.value))), {}};
+    return {Stream(std::make_shared<Stream::Impl>(
+                std::move(result.value), impl_->logger, impl_->log_level,
+                impl_->session_id)), {}};
 }
 
 Status Session::close() noexcept {
     if (impl_ == nullptr) {
         return {};
     }
-    auto status = std::visit([](auto& session) {
+    auto impl = std::move(impl_);
+    emit_session_log(impl->logger, impl->log_level, LogLevel::info,
+                     impl->session_id, "closing session");
+    impl->stop_telemetry();
+    const auto session_status = std::visit([](auto& session) {
         return map_session_status(session.close());
-    }, impl_->session);
-    impl_.reset();
-    return status;
+    }, impl->session);
+    emit_session_log(impl->logger, impl->log_level, LogLevel::info,
+                     impl->session_id, "closed session");
+    return session_status;
 }
 
 SessionResult Session::start(int socket_descriptor,
@@ -357,7 +565,9 @@ SessionResult Session::start(int socket_descriptor,
         auto event_loop = std::make_shared<EventLoop>(
             std::move(dispatcher.value));
         return {Session(std::make_unique<Session::Impl>(
-                    std::move(event_loop), std::move(result.value))), {}};
+                    std::move(event_loop), std::move(result.value),
+                    config.monitor, config.metrics_interval, config.logger,
+                    config.log_level)), {}};
     }
 
     const core::V3ClientConfig internal_config{
@@ -377,7 +587,8 @@ SessionResult Session::start(int socket_descriptor,
     }
     auto event_loop = std::make_shared<EventLoop>(std::move(dispatcher.value));
     return {Session(std::make_unique<Session::Impl>(
-                std::move(event_loop), std::move(result.value))), {}};
+                std::move(event_loop), std::move(result.value), config.monitor,
+                config.metrics_interval, config.logger, config.log_level)), {}};
 }
 
 SessionResult connect_tcp(const std::string& host, std::uint16_t port,
