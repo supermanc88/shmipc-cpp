@@ -9,6 +9,7 @@
 - `map_transport_status`、`map_session_status`、`map_v3_handshake_status`：内部错误到稳定 public `Status` 的窄映射。
 - `valid_config`、`map_tiers`：在连接前检查名称、容量、tier 百分比/重复 capacity，并转换内部 pool 配置。
 - `Stream::close`：发布公共关闭状态、关闭内部 Stream，并在普通线程等待已注册 callback 完成。
+- `Stream::is_open`：同时检查公共 close 标志与核心连接/Stream 状态，供池化 lease 和应用观察生命周期。
 - `Session::Impl`：持有共享 EventLoop 与 client/server 内部 Session variant，并提供角色判断。
 - `Session::start`：接管原生 socket descriptor，立即恢复为 `ControlSocket` RAII owner，启动 dispatcher，并按 mode 选择 v2/v3 client Session。
 - `connect_tcp/connect_unix`：连接前配置/mode 门禁和 control socket 创建入口。
@@ -46,5 +47,6 @@
 - [异步 callback 实现](src__callback.cpp.md)
 - [共享 Stream PImpl](src__public__session_impl.hpp.md)
 - [Listener 实现](src__listener.cpp.md)
+- [SessionManager 实现](src__session_manager.cpp.md)
 - [core 目录](../dirs/src__core.md)
 - [架构决策](../02_DECISIONS.md)

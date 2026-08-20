@@ -89,6 +89,7 @@ public:
     Stream& operator=(Stream&&) noexcept;
 
     [[nodiscard]] explicit operator bool() const noexcept;
+    [[nodiscard]] bool is_open() const noexcept;
     [[nodiscard]] std::uint32_t id() const noexcept;
     [[nodiscard]] bool is_fallback() const noexcept;
 
@@ -108,6 +109,8 @@ public:
 
 private:
     friend class Session;
+    friend class PooledStream;
+    friend class SessionManager;
     friend struct AsyncCallbackState;
     struct Impl;
 

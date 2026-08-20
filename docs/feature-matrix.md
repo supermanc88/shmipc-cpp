@@ -34,7 +34,8 @@
 | v3 memfd 多路 Session | 已验证 | C++/固定 Go 双向数据面、run `32223456643` 七项门禁 | 持续回归 |
 | Session fallback breaker | 已验证 | 固定 30 秒 unhealthy、拒绝新流、恢复/重开单测、v2/v3 Go 双向 50 轮与 ASan 10 轮、run `32329216783` | 持续回归 |
 | 公共异步 callback executor | 部分完成 | 每流串行、跨流并行、RAII 注销、关闭等待、callback 内关闭与异常隔离；本机三套 sanitizer、远端 GCC/ASan 19/19 | 等待云端门禁 |
-| 公共服务端 Listener 与字节流适配 | 部分完成 | TCP/file v2、Unix/memfd v3、Listener 关闭唤醒、accepted Session 延续、跨消息 read；本机/远端 sanitizer 20/20 | 等待云端门禁；SessionManager 在 `S-0504` |
+| 公共服务端 Listener 与字节流适配 | 部分完成 | TCP/file v2、Unix/memfd v3、Listener 关闭唤醒、accepted Session 延续、跨消息 read；本机/远端 sanitizer 20/20 | 等待云端门禁 |
+| SessionManager、Stream pool 与重连 | 部分完成 | batched round-robin、RAII lease、有界 FIFO、generation 重连、并发 close/get；本机四套与远端 Debug/ASan 21/21、专项 20 轮、安装消费者 | 提交和云端验证 |
 
 ## 产品需求
 
@@ -54,9 +55,9 @@
 | `QUEUE-003` | amd64/arm64 原子对齐 | 两套布局与两架构原子路径已云端验证 | `S-0102`/`S-0204` |
 | `STREAM-001..004` | 多路复用、读写、fallback、关闭 | v2/v3 多 Stream、deadline、sticky fallback、关闭及 Session breaker 已完成本机/远端验证 | M3/M4 |
 | `API-001` | RAII Session/Stream API | 公共 client API、PImpl、同步示例及 v2/v3 Linux 集成已通过本机/远端验证，待云端门禁 | `S-0501` |
-| `API-002` | Listener 与 SessionManager | Listener、服务端 Session 与 StreamConnection 已完成本机/远端验证；SessionManager 未开始 | M5 |
+| `API-002` | Listener 与 SessionManager | Listener、服务端 Session、StreamConnection、SessionManager/Stream pool/断线重建均已完成本机/远端完整验证，待云端门禁 | M5 |
 | `API-003` | 异步 callback API | 共享 executor、每流串行 pump、RAII subscription 和关闭/异常生命周期已完成本机/远端验证，待云端门禁 | `S-0502` |
-| `OPS-001` | 热重启 | 未开始 | M5 |
+| `OPS-001` | 热重启 | 未开始 | `S-0601` |
 | `OBS-001` | 指标与日志 | 未开始 | M5 |
 | `NFR-001` | Linux x86_64/arm64 | x86_64 构建基线已验证 | M2 起补 arm64 |
 | `NFR-002` | 内存与并发安全 | 门禁已验证，功能待实现 | 全程 |

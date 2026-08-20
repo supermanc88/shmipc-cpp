@@ -41,6 +41,7 @@ add_library(
     src/transport/control_socket.cpp
     src/transport/epoll_dispatcher.cpp
     src/session.cpp
+    src/session_manager.cpp
     src/stream_connection.cpp
     src/version.cpp
 )

@@ -51,6 +51,7 @@ public:
   V2Stream &operator=(V2Stream &&other) noexcept;
 
   [[nodiscard]] explicit operator bool() const noexcept;
+  [[nodiscard]] bool is_open() const noexcept;
   [[nodiscard]] std::uint32_t id() const noexcept;
   [[nodiscard]] bool is_fallback() const;
   [[nodiscard]] V2SessionStatus send(const std::uint8_t *data,
@@ -72,6 +73,7 @@ public:
   [[nodiscard]] V2SessionStatus close();
   [[nodiscard]] V2SessionStatus
   wait_remote_close(std::chrono::milliseconds timeout);
+  [[nodiscard]] bool reset_for_reuse() noexcept;
 
   using ReadableCallback = std::function<void()>;
   [[nodiscard]] std::uint64_t

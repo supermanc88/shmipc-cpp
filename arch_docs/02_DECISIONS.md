@@ -298,6 +298,17 @@
 - 兼容层：StreamConnection 一次 write 发布一条消息；read 保存 pending suffix、拼接立即就绪的后续消息，并在部分数据后延迟报告非 timeout 终止状态。
 - 证据：`include/shmipc/listener.hpp:12-65`、`src/listener.cpp:58-259`、`src/public/session_impl.hpp:44-75`、`src/stream_connection.cpp:14-140`、`tests/public_listener_test.cpp:57-223`。远端专项连续 20 轮，GCC 8.5 Debug/ASan 与本机三套配置各 20/20，安装消费者通过。
 
+### D-035：SessionManager 使用 RAII lease、per-Session FIFO pool 与 generation 重连
+
+- 状态：已验证实现，待云端门禁；`S-0504` 本机与远端 Linux 完整门禁通过。
+- 选路：默认保持固定 Go 基线的 32 次批量 round-robin，公式为 `(selection / batch) % session_count` 且 selection 从 1 开始；batch 可配置但不能为 0。
+- ownership：`PooledStream` 是独占 move-only lease，析构自动尝试回池；显式 `close` 放弃复用。lease 弱引用池，因此不会延长 Manager 生命周期。
+- 复用：每 Session 使用有界 FIFO。fallback、未读消息、活动 callback、关闭/失败状态、旧 generation、unhealthy Session 和超容量 lease 均关闭；return 与 checkout 两次验证覆盖空闲期状态变化，成功复用时清除 persistent deadline。
+- 重连：每池独立 worker 轮询控制连接；断线后 generation 加一并关闭旧 Session/idle Streams，按配置间隔重连。file 名称追加 PID/Session/generation，避免旧 checked-out lease 持有的 mapping 与新路径冲突。
+- 并发：固定 pool vector 初始化后不再清空；atomic stopping/selection 与 per-pool mutex 使 `close` 可与 `get_stream` 并发。shutdown 先通知/join workers，再关闭池资源。
+- 边界：本切片不实现 Go hot-restart epoch；连接建立后的 handshake 仍沿用同步 Session API，没有独立 handshake timeout。
+- 证据：固定 Go `session_manager.go`；`include/shmipc/session_manager.hpp:13-104`、`src/session_manager.cpp:20-378`、`src/core/v2_multiplexed_session.cpp:505-514,764-788`、`tests/public_session_manager_test.cpp`。本机四套与远端 Debug/ASan 各 21/21，远端专项连续 20 轮，macOS/Linux 安装消费者通过。
+
 ## 设计风险与待验证事实
 
 ### R-001：共享内存使用本机字节序和手工 offset
@@ -345,6 +356,7 @@
 
 ## 修订历史
 
+- 2026-08-20：`S-0504` 新增 SessionManager、批量 round-robin、per-Session FIFO Stream pool、RAII lease、generation 隔离与独立重连 worker。Linux 运行时诊断修正默认空 Result 测试误判，并发现/修复丢弃不可复用 idle Stream 后未新建的问题；临时插桩已清理。证据：`include/shmipc/session_manager.hpp`、`src/session_manager.cpp`、`tests/public_session_manager_test.cpp`；影响文档：索引、概要、本文件、root/public/manager 文件、关系图、计划、回归指南和功能矩阵。
 - 2026-08-20：`S-0503` 新增 move-only Listener、server Session/AcceptStream、共享 EventLoop 与 StreamConnection。远端 Linux 运行时调试修正公开握手上限未经协议收窄导致 v2/v3 默认配置失败；临时插桩已清理。影响文档：索引、概要、本文件、root/public 文件、关系图、ADR、计划、回归指南和功能矩阵。
 - 2026-08-20：`S-0502` 新增共享 callback executor、核心 tokenized readable notifier、每流 generation pump、RAII subscription、callback 内 Close/异常隔离和普通线程销毁等待。证据：`include/shmipc/session.hpp:105-199`、`src/callback.cpp:56-443`、`src/public/session_impl.hpp:10-27`、`src/core/v2_multiplexed_session.cpp:270-344,675-740`；影响文档：索引、概要、本文件、root/core 目录、公共/异步/PImpl/多路文件、关系图、ADR、计划、回归指南和功能矩阵。
 - 2026-08-20：`S-0501` 新增版本无关 move-only Session/Stream 公共 API、PImpl client 适配、同步示例、线程 package 依赖和安装后外部消费者；Linux 测试覆盖 v2 TCP/file 与 v3 Unix/memfd。影响文档：索引、概要、本文件、root/core 目录、公共 API/实现文件、关系图、README、计划、回归指南和功能矩阵。

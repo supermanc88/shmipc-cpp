@@ -505,6 +505,15 @@ V2Stream::operator bool() const noexcept {
   return session_ != nullptr && stream_ != nullptr && connection_ != nullptr;
 }
 
+bool V2Stream::is_open() const noexcept {
+  if (!session_ || !stream_ || !connection_ || !connection_->is_open()) {
+    return false;
+  }
+  std::lock_guard<std::mutex> lock(stream_->mutex);
+  return !stream_->local_closed && !stream_->remote_closed &&
+         static_cast<bool>(stream_->failure);
+}
+
 std::uint32_t V2Stream::id() const noexcept {
   return stream_ ? stream_->id : 0U;
 }
@@ -753,6 +762,25 @@ V2SessionStatus V2Stream::wait_remote_close(std::chrono::milliseconds timeout) {
     return stream_->failure;
   }
   return {};
+}
+
+bool V2Stream::reset_for_reuse() noexcept {
+  if (!stream_) {
+    return false;
+  }
+  {
+    std::lock_guard<std::mutex> lock(stream_->mutex);
+    if (stream_->local_closed || stream_->remote_closed || !stream_->failure ||
+        stream_->fallback || !stream_->messages.empty() ||
+        stream_->readable_callback) {
+      return false;
+    }
+    stream_->read_deadline.reset();
+    stream_->write_deadline.reset();
+    ++stream_->deadline_generation;
+  }
+  stream_->condition.notify_all();
+  return true;
 }
 
 V2MultiplexedClientSession::V2MultiplexedClientSession(

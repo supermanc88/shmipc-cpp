@@ -1,5 +1,6 @@
 #include <shmipc/listener.hpp>
 #include <shmipc/session.hpp>
+#include <shmipc/session_manager.hpp>
 #include <shmipc/stream_connection.hpp>
 #include <shmipc/version.hpp>
 
@@ -23,6 +24,15 @@ static_assert(!std::is_copy_constructible<shmipc::Listener>::value,
               "listener owns a control endpoint");
 static_assert(std::is_nothrow_move_constructible<shmipc::Listener>::value,
               "listener must transfer ownership without throwing");
+static_assert(!std::is_copy_constructible<shmipc::SessionManager>::value,
+              "manager owns sessions and reconnect workers");
+static_assert(
+    std::is_nothrow_move_constructible<shmipc::SessionManager>::value,
+    "manager must transfer ownership without throwing");
+static_assert(!std::is_copy_constructible<shmipc::PooledStream>::value,
+              "pooled stream is an exclusive lease");
+static_assert(std::is_nothrow_move_constructible<shmipc::PooledStream>::value,
+              "lease must transfer ownership without throwing");
 static_assert(!std::is_copy_constructible<shmipc::StreamConnection>::value,
               "connection owns a stream");
 static_assert(
@@ -40,6 +50,9 @@ int main() {
     shmipc::Stream stream;
     shmipc::Listener listener;
     shmipc::ListenerConfig listener_config;
+    shmipc::SessionManager manager;
+    shmipc::SessionManagerConfig manager_config;
+    shmipc::PooledStream pooled_stream;
     shmipc::StreamConnection connection;
     auto executor = std::make_shared<shmipc::CallbackExecutor>(1U);
     auto callbacks = std::make_shared<Callbacks>();
@@ -49,7 +62,8 @@ int main() {
     return shmipc::version.major == 0 && config.queue_capacity != 0U &&
                    executor->thread_count() == 1U && callbacks != nullptr &&
                    listener_config.backlog > 0 && !subscription && !session &&
-                   !stream && !listener && !connection
+                   manager_config.session_count > 0U && !stream && !listener &&
+                   !manager && !pooled_stream && !connection
                ? 0
                : 1;
 }

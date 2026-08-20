@@ -69,6 +69,15 @@ request:
 `<shmipc/stream_connection.hpp>` optionally adapts a message-oriented Stream
 to copy-based byte reads and writes while preserving unread message suffixes.
 
+## Session manager API
+
+`<shmipc/session_manager.hpp>` provides a move-only multi-Session client with
+batched round-robin selection, bounded FIFO Stream reuse, and independent
+reconnection for each Session. `get_stream()` returns a move-only
+`PooledStream` lease; destroying the lease returns a safe Stream to its source
+pool and closes fallback, unread, callback-bound, stale-generation, or excess
+Streams instead. Hot-restart epoch support is planned separately.
+
 ## Project documents
 
 - [Porting plan](docs/SHMIPC_CPP_PORTING_PLAN.md)

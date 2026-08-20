@@ -213,7 +213,7 @@ tools/
 - `S-0501`（已完成；提交 `62ed32f`）：版本无关 move-only RAII client Session/Stream、稳定错误分类、file/memfd 配置、同步示例及 install 后独立消费者。
 - `S-0502`（已完成本机/远端验证，待云端门禁）：共享 callback executor、每 Stream 串行 pump、RAII subscription、callback 内 Close、异常隔离和销毁等待；设计见 [ADR-0002](adr/0002-async-callback-executor.md)。
 - `S-0503`（已完成本机/远端验证，待云端门禁）：move-only Listener、服务端 Session/AcceptStream、共享 event loop 与 copy-based StreamConnection；设计见 [ADR-0003](adr/0003-listener-event-loop.md)。
-- `S-0504`：SessionManager、round-robin、Stream pool、断线重建。
+- `S-0504`（已完成本机/远端验证，待云端门禁）：SessionManager、批量 round-robin、RAII Stream lease、有界 FIFO pool、generation 隔离与 per-Session 断线重建。
 - `S-0505`：指标、日志和 shutdown flush。
 
 退出条件：API 示例与集成测试通过；所有权/线程安全/错误契约有文档；无已知资源泄漏。
@@ -327,10 +327,11 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-M5-001`：公共安装头以 PImpl 隔离内部 v2/v3 类型；client Session 在该切片中是 event loop 唯一 Session owner，随后由 `E-M5-003` 泛化为共享 owner。Stream 保留 move-only 独立句柄，同步示例只依赖导出 target。Linux 公共集成覆盖 TCP/file v2 与 Unix/memfd v3；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 19/19，macOS/Linux install 后独立消费者通过。
 - `E-M5-002`：公共异步层以共享固定线程池承载多个 Stream，每流 generation/scheduled pump 保证 callback 串行且不丢唤醒；两流并行、重复注册、远端关闭、外部 Close 等待、callback 内 Close、callback 异常→error/local-close 均有集成覆盖。专项连续 20 轮通过；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 19/19，macOS/Linux install 后独立消费者通过。
 - `E-M5-003`：公开 Listener 支持 TCP/file v2 与 Unix/memfd v3，accepted Session 共享 Listener event loop 且在 Listener 关闭后继续工作；StreamConnection 保留未读后缀并隐藏消息边界。远端真实 Linux 专项连续 20 轮、GCC 8.5 Debug/ASan 各 20/20，本机 Debug/ASan+UBSan/TSan 各 20/20，macOS/Linux 安装消费者通过。Linux 调试同时锁定了 v2/v3 metadata 协议硬上限必须在各握手入口收窄。
+- `E-M5-004`：SessionManager 保持固定 Go 的 batched round-robin 语义，以 move-only RAII lease 自动回收有界 FIFO idle Stream；fallback、未读/callback/关闭状态、旧 generation 和超容量 Stream 不复用。每 Session 独立 worker 在控制连接断开后以新 generation/name 重连；专项覆盖复用、容量、TCP 重连、非法配置与并发 close/get。本机 Debug/Release/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 21/21，远端专项连续 20 轮，macOS/Linux 安装消费者通过。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. 提交并由云端七项门禁验证累计的 `S-0501..S-0503`；通过后进入 `S-0504` SessionManager、round-robin、Stream pool 与断线重建。
+1. 创建 `S-0504` 本地候选提交；累计一批后由用户 push 并以云端七项门禁验证 `S-0501..S-0504`。
 2. 保留 Listener 默认配置 v2/v3、关闭后 accepted Session 存活、异步生命周期、安装后消费者、双向 Go Session oracle、breaker 和既有压力矩阵作为持续回归。

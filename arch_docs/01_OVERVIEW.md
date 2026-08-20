@@ -114,7 +114,7 @@
 
 - Go 参考实现构建入口：`go.mod`，Go 1.20。
 - C++ 构建入口：根目录 `CMakeLists.txt`，最低 CMake 3.16、C++17；产物 target 为 `shmipc`/`shmipc::shmipc`，支持 CTest、install/export 及 `find_package(shmipc)` package 配置。
-- C++ 公共 client/server 入口：`include/shmipc/session.hpp` 与 `listener.hpp`。connect 返回 client Session，Listener accept 返回 server Session；Listener 与 accepted Session 共享 event loop，关闭监听不影响已有连接。PImpl 隔离 v2/v3 等内部类型；可选 CallbackExecutor 提供每 Stream 串行 callback。
+- C++ 公共 client/server 入口：`include/shmipc/session.hpp`、`listener.hpp` 与 `session_manager.hpp`。connect 返回 client Session，Listener accept 返回 server Session；SessionManager 以批量 round-robin 在多个 client Session 间选路，以 RAII lease 管理有界 FIFO Stream pool，并为每个 Session 独立重连。PImpl 隔离 v2/v3 等内部类型；可选 CallbackExecutor 提供每 Stream 串行 callback。
 - C++ 字节流兼容入口：`include/shmipc/stream_connection.hpp`。一次 write 发布一条消息，read 保留未读后缀并隐藏消息边界；该 copy 路径不替代原生 Stream 的消息/零拷贝语义。
 - C++ 质量入口：`SHMIPC_WARNINGS_AS_ERRORS`、`SHMIPC_ENABLE_ASAN`、`SHMIPC_ENABLE_UBSAN`、`SHMIPC_ENABLE_TSAN`；ASan 与 TSan 在配置阶段互斥。
 - C++ 控制协议入口：`src/protocol/control_codec.hpp`。当前提供 header、事件 0..9、v2/v3 metadata 与 fallback 的大端编解码；以明确错误分类拒绝截断、非法字段、错误事件、尾随字节和超过默认 64 MiB 上限的帧。该接口暂为内部 API。
@@ -161,6 +161,7 @@
 - `S-0501` 验证：`tests/public_session_test.cpp` 在 Linux 实际覆盖 TCP/file v2 与 Unix/memfd v3 的 connect/open/send/receive/close；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 19/19，macOS/Linux 安装后独立消费者均通过，待云端门禁。
 - `S-0502` 验证：核心 tokenized notifier 仅唤醒公共每流 pump；两 Stream 并行且每流 callback 最大并发为 1，并覆盖重复注册、远端关闭、普通线程 Close 等待、callback 内 Close 和异常隔离。专项 20 轮、本机三套 sanitizer、远端 GCC 8.5 Debug/ASan 19/19 与安装消费者通过，待云端门禁。
 - `S-0503` 验证：公共 Listener 覆盖 TCP/file v2 与 Unix/memfd v3、角色限制、关闭唤醒和关闭后 accepted Session 延续；StreamConnection 覆盖未读后缀与跨消息 read。远端专项连续 20 轮、本机三套 sanitizer、远端 GCC 8.5 Debug/ASan 20/20 与安装消费者通过，待云端门禁。
+- `S-0504` 验证：SessionManager 覆盖两个 Session 的批量 round-robin/FIFO 复用、池满关闭、TCP 断线 generation 重建、非法配置和 `close/get_stream` 并发；本机 Debug/Release/ASan+UBSan/TSan、远端 Debug/ASan 各 21/21，远端专项 20 轮与两平台安装消费者通过，待云端验证。
 - 时钟注意：本机当前比远端快约 2 分 20 秒；同步时不得保留本机文件时间戳，否则 Ninja 会反复重新生成。标准命令见 `PROJECT_WORKFLOW.md`。
 - Linux 运行基线：本机用 Go 1.25.10 交叉编译固定提交的 amd64 测试二进制，rsync 至远端后完整测试 `PASS`、退出码 0；覆盖 v2、v3/memfd、队列、Stream/Session 和热重启路径。
 - CI：`.github/workflows/tests.yaml` 在 Ubuntu 运行单测/benchmark，并在自托管 Linux 上覆盖 Go 1.21–1.25；`.github/workflows/pre_check.yaml` 运行许可证、拼写和 golangci-lint。

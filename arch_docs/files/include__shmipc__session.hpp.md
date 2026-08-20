@@ -9,7 +9,7 @@
 - `Error`、`Status`、`to_string(Error)`：稳定的公共错误分类、可选系统错误码与文本。
 - `SharedMemoryMode`：`file` 或 `memfd` 资源模式。
 - `BufferTier`、`ClientConfig`：queue/pool/tier 配置；默认值与固定 Go 配置一致。
-- `Stream`：move-only 消息句柄，提供 ID、fallback 状态、同步 send/receive、persistent deadline、close 与远端关闭等待。
+- `Stream`：move-only 消息句柄，提供有效/打开状态、ID、fallback 状态、同步 send/receive、persistent deadline、close 与远端关闭等待。
 - `MessageResult`、`StreamResult`：owned payload/句柄与状态结果。
 - `StreamCallbacks`：数据、本地关闭、远端关闭和错误 callback 接口。
 - `CallbackExecutor`：不可复制/移动、可跨 Stream 共享的固定线程池。
@@ -52,5 +52,6 @@
 - [共享 Stream PImpl](src__public__session_impl.hpp.md)
 - [内部多路 Session](src__core__v2_multiplexed_session.hpp.md)
 - [公共 Listener](include__shmipc__listener.hpp.md)
+- [公共 SessionManager](include__shmipc__session_manager.hpp.md)
 - [根目录](../dirs/root.md)
 - [架构决策](../02_DECISIONS.md)

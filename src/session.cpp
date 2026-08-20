@@ -175,6 +175,11 @@ Stream::operator bool() const noexcept {
            static_cast<bool>(impl_->stream);
 }
 
+bool Stream::is_open() const noexcept {
+    return impl_ != nullptr && !impl_->closed.load(std::memory_order_acquire) &&
+           impl_->stream.is_open();
+}
+
 std::uint32_t Stream::id() const noexcept {
     return impl_ == nullptr ? 0U : impl_->stream.id();
 }

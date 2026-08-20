@@ -5,9 +5,10 @@
 ```mermaid
 graph TD
   consumer["consumer / examples / public tests"]
-  public["include/shmipc/version/session/listener/stream_connection"]
+  public["include/shmipc/version/session/session_manager/listener/stream_connection"]
   public_impl["src/session.cpp PImpl adapter"]
   listener_impl["src/listener.cpp server adapter"]
+  manager_impl["src/session_manager.cpp pool/reconnect adapter"]
   connection_impl["src/stream_connection.cpp byte adapter"]
   callback_impl["src/callback.cpp async adapter"]
   stream_impl["src/public/session_impl.hpp shared PImpl"]
@@ -55,6 +56,9 @@ graph TD
   listener_impl -- shares --> stream_impl
   listener_impl -- accepts/starts --> multiplexed_session
   listener_impl -- owns --> dispatcher
+  manager_impl -- implements --> public
+  manager_impl -- opens/reuses --> public_impl
+  manager_impl -- monitors/reconnects --> multiplexed_session
   connection_impl -- implements --> public
   connection_impl -- wraps --> stream_impl
   callback_impl -- implements --> public
@@ -65,6 +69,7 @@ graph TD
   library -- contains --> implementation
   library -- contains --> public_impl
   library -- contains --> listener_impl
+  library -- contains --> manager_impl
   library -- contains --> connection_impl
   library -- contains --> callback_impl
   package -- exports --> library
