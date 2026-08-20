@@ -5,8 +5,10 @@
 ```mermaid
 graph TD
   consumer["consumer / examples / public tests"]
-  public["include/shmipc/version.hpp + session.hpp"]
+  public["include/shmipc/version/session/listener/stream_connection"]
   public_impl["src/session.cpp PImpl adapter"]
+  listener_impl["src/listener.cpp server adapter"]
+  connection_impl["src/stream_connection.cpp byte adapter"]
   callback_impl["src/callback.cpp async adapter"]
   stream_impl["src/public/session_impl.hpp shared PImpl"]
   callback_executor["CallbackExecutor shared thread pool"]
@@ -49,6 +51,12 @@ graph TD
   public_impl -- owns --> dispatcher
   public_impl -- delegates --> multiplexed_session
   public_impl -- shares --> stream_impl
+  listener_impl -- implements --> public
+  listener_impl -- shares --> stream_impl
+  listener_impl -- accepts/starts --> multiplexed_session
+  listener_impl -- owns --> dispatcher
+  connection_impl -- implements --> public
+  connection_impl -- wraps --> stream_impl
   callback_impl -- implements --> public
   callback_impl -- shares --> stream_impl
   callback_impl -- schedules --> callback_executor
@@ -56,6 +64,8 @@ graph TD
   multiplexed_session -- notifies readable --> callback_impl
   library -- contains --> implementation
   library -- contains --> public_impl
+  library -- contains --> listener_impl
+  library -- contains --> connection_impl
   library -- contains --> callback_impl
   package -- exports --> library
   ci -- configures/builds/tests/installs --> library

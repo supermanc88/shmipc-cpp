@@ -198,8 +198,9 @@ struct CallbackSubscriptionResult {
     }
 };
 
-// Move-only client session. It owns its event-loop thread and closes all
-// streams before joining that thread during destruction.
+// Move-only client or accepted-server session. A client opens streams; an
+// accepted server session accepts them. Sessions may share an event-loop
+// thread, which is joined after its final owner is destroyed.
 class Session final {
 public:
     Session() noexcept;
@@ -214,12 +215,14 @@ public:
     [[nodiscard]] bool is_open() const noexcept;
     [[nodiscard]] bool is_healthy() const noexcept;
     [[nodiscard]] StreamResult open_stream();
+    [[nodiscard]] StreamResult accept_stream(std::chrono::milliseconds timeout);
     [[nodiscard]] Status close() noexcept;
 
 private:
     friend SessionResult connect_tcp(const std::string&, std::uint16_t,
                                      const ClientConfig&);
     friend SessionResult connect_unix(const std::string&, const ClientConfig&);
+    friend class Listener;
     struct Impl;
 
     explicit Session(std::unique_ptr<Impl> impl) noexcept;

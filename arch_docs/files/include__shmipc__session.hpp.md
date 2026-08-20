@@ -2,7 +2,7 @@
 
 ## Purpose
 
-定义可安装、版本无关的 client API。应用只依赖公共配置、稳定错误分类、move-only RAII `Session/Stream` 与可选异步 callback 层，不感知 v2/v3 handshake、dispatcher 或共享内存内部类型。
+定义可安装、版本无关的 client/server Session API。应用只依赖公共配置、稳定错误分类、move-only RAII `Session/Stream` 与可选异步 callback 层，不感知 v2/v3 handshake、dispatcher 或共享内存内部类型。
 
 ## Exports（全量）
 
@@ -14,13 +14,13 @@
 - `StreamCallbacks`：数据、本地关闭、远端关闭和错误 callback 接口。
 - `CallbackExecutor`：不可复制/移动、可跨 Stream 共享的固定线程池。
 - `CallbackSubscription`、`CallbackSubscriptionResult`：move-only RAII callback 注册及结果。
-- `Session`：move-only client owner，提供 open/healthy 状态、开流和关闭。
+- `Session`：move-only client 或 accepted-server owner，提供 open/healthy 状态、按角色 open/accept stream 和关闭。
 - `SessionResult`：连接结果。
 - `connect_tcp`、`connect_unix`：control connection 工厂；memfd 仅允许 Unix socket。
 
 ## Ownership & Concurrency
 
-- `Session` 独占一个内部多路 client Session 和一个 event-loop thread；析构与显式 close 均先关闭连接，再停止/join event loop。
+- `Session` 持有一个内部多路 client/server Session 和共享 EventLoop owner；最后一个 owner 释放时停止/join event loop。
 - `Stream` 独立持有内部连接/state 句柄，但 Session close 会关闭底层连接并使后续操作返回 `closed`。
 - 不允许复制，move constructor/assignment 为 `noexcept`；空句柄可安全 close。
 - 不同 Stream 可并发；同一 Stream mutation 由内部已验证 mutex/condition-variable 协议串行化。
@@ -33,17 +33,17 @@
 - file 模式中 `queue_name/buffer_name` 是路径，可配 TCP 或 Unix control socket。
 - memfd 模式中两个名称仅用于诊断，必须使用 `connect_unix` 传递 FD；`connect_tcp` 在连接前返回 `unsupported`。
 - public `Error` 刻意归并内部 codec/queue/pool/handshake 细分错误，避免协议实现成为安装 ABI。
-- 当前只提供 client 主动开流；server Listener/Accept 属于 `S-0503`。
+- client Session 只允许 `open_stream`，accepted server Session 只允许限时 `accept_stream`；错误角色返回 `unsupported`。
 - 同一 Stream 只允许一个有效 subscription；`on_data` 异常被归一化为 `callback_error`，随后本地关闭。详细契约见 `docs/adr/0002-async-callback-executor.md`。
 
 ## Evidence
 
 - 定义：`include/shmipc/session.hpp:15-199`。
-- PImpl 与错误映射：`src/session.cpp:13-369`。
+- PImpl 与错误映射：`src/session.cpp:13-412`、`src/public/session_impl.hpp:44-75`。
 - 异步执行与 subscription：`src/callback.cpp:56-443`；核心通知：`src/core/v2_multiplexed_session.cpp:270-344,675-740`。
 - Linux v2/v3 公共端到端及异步生命周期：`tests/public_session_test.cpp`。
 - 安装边界：`tests/package_consumer/` 仅包含公共头并链接 `shmipc::shmipc`。
-- 本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 19/19；macOS/Linux package consumer 通过。
+- 本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 20/20；macOS/Linux package consumer 通过。
 
 ## Links
 
@@ -51,5 +51,6 @@
 - [异步 callback 实现](src__callback.cpp.md)
 - [共享 Stream PImpl](src__public__session_impl.hpp.md)
 - [内部多路 Session](src__core__v2_multiplexed_session.hpp.md)
+- [公共 Listener](include__shmipc__listener.hpp.md)
 - [根目录](../dirs/root.md)
 - [架构决策](../02_DECISIONS.md)

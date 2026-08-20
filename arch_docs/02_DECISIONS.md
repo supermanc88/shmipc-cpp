@@ -268,11 +268,11 @@
 - 并发：deadline 使用 seq_cst atomic ticks 和 CAS，不创建 timer 线程，不与 Session/Stream mutex 形成新的锁序。
 - 证据：固定 Go `session.go:230-268,546-558`、`stream.go:256-270`、`protocol_manager.go:153-176`；C++ `src/core/v2_multiplexed_session.hpp:16-34,112-115`、`.cpp:16-38,148-159,513-534,727-747`。本机 Debug/ASan+UBSan/TSan、远端 Debug/ASan 各 18/18，v2/v3 固定 Go 双向普通 50 轮及 ASan helper 10 轮通过。
 
-### D-032：公共 client API 使用版本无关 move-only PImpl，并由 Session 独占 event loop
+### D-032：公共 client API 使用版本无关 move-only PImpl 与共享 EventLoop owner
 
 - 状态：已验证实现，待云端门禁；`S-0501` 本机与远端 Linux 门禁通过。
 - API：安装头只导出 `ClientConfig`、`Status/Error`、move-only `Session/Stream` 及 `connect_tcp/connect_unix`；协议版本、handshake、dispatcher、queue/pool 错误不进入 public type layout。
-- ownership：`Session::Impl` 按 dispatcher→内部 Session 的成员顺序持有资源，析构时先关闭内部 Session、再停止并 join dispatcher；显式 `close()` 同样遵循该顺序且幂等。`Stream` 独立持有内部句柄，Session 关闭后操作确定性返回 closed。
+- ownership：`Session::Impl` 持有内部 Session 与共享 EventLoop；client 当前是其 event loop 唯一 Session owner，Listener 场景可由多个 accepted Session 共享。显式 `close()` 先关闭 Session，再释放 EventLoop owner；最后一个 owner 析构时 stop/join。`Stream` 独立持有内部句柄。
 - 模式：file 模式可使用 TCP/Unix；memfd 需要 Unix socket 传递 descriptor，TCP+memfd 在建立连接前返回 `unsupported`。公共默认 queue/pool/tier 与固定 Go 默认值一致。
 - 错误：内部 transport/handshake/codec/queue/pool 细节归一化为稳定 public 分类，同时保留 `system_error`；不会把内部枚举固定进安装 ABI。
 - 并发：不同 Stream 可并发，同一 Stream 的 mutation 依赖已验证内部串行化；同步 API 只返回 owned `std::vector<uint8_t>`，因此本切片没有暴露 borrowed-view 生命周期。
@@ -287,6 +287,16 @@
 - ownership：subscription/state 强持有 callback、executor 与 Stream PImpl；核心 notifier 只 weak 捕获 state，PImpl 只 weak 指向 callback control，不形成环。
 - 关闭：普通线程 close/stop 等待在途 callback 完成；executor callback 内 close/stop 不自等待，pump 在 callback 返回后发布唯一终止 callback。`on_data` 异常被隔离为 `callback_error` 并触发本地关闭。
 - 证据：`include/shmipc/session.hpp:105-199`、`src/callback.cpp:56-443`、`src/public/session_impl.hpp:10-27`、`src/core/v2_multiplexed_session.cpp:270-344,675-740`、`tests/public_session_test.cpp`。专项连续 20 轮，本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 19/19，macOS/Linux 安装消费者通过。
+
+### D-034：Listener 与 accepted Session 共享 EventLoop，兼容层保留字节流后缀
+
+- 状态：已验证实现，待云端门禁；`S-0503` 本机与远端 Linux 门禁通过。
+- ownership：Listener 和每个 accepted Session 强持有同一个 EventLoop；关闭 Listener 只关闭 listening FD，最后一个 owner 析构才 stop/join dispatcher。
+- accept：listening FD 为 nonblocking；单 accept mutex 串行化握手，poll 最长 50 ms 后复查关闭状态。timeout 只覆盖等待控制连接，握手在连接建立后同步完成。
+- 角色：client Session 只 open，server Session 只 accept；错误角色返回稳定 `unsupported`。
+- 协议边界：公开握手上限在 v2/v3 入口分别 clamp 到 metadata 硬上限。远端真实 Linux 首次验证发现未 clamp 会让默认 64 MiB 配置在握手读取前失败，现由默认配置回归锁定。
+- 兼容层：StreamConnection 一次 write 发布一条消息；read 保存 pending suffix、拼接立即就绪的后续消息，并在部分数据后延迟报告非 timeout 终止状态。
+- 证据：`include/shmipc/listener.hpp:12-65`、`src/listener.cpp:58-259`、`src/public/session_impl.hpp:44-75`、`src/stream_connection.cpp:14-140`、`tests/public_listener_test.cpp:57-223`。远端专项连续 20 轮，GCC 8.5 Debug/ASan 与本机三套配置各 20/20，安装消费者通过。
 
 ## 设计风险与待验证事实
 
@@ -335,6 +345,7 @@
 
 ## 修订历史
 
+- 2026-08-20：`S-0503` 新增 move-only Listener、server Session/AcceptStream、共享 EventLoop 与 StreamConnection。远端 Linux 运行时调试修正公开握手上限未经协议收窄导致 v2/v3 默认配置失败；临时插桩已清理。影响文档：索引、概要、本文件、root/public 文件、关系图、ADR、计划、回归指南和功能矩阵。
 - 2026-08-20：`S-0502` 新增共享 callback executor、核心 tokenized readable notifier、每流 generation pump、RAII subscription、callback 内 Close/异常隔离和普通线程销毁等待。证据：`include/shmipc/session.hpp:105-199`、`src/callback.cpp:56-443`、`src/public/session_impl.hpp:10-27`、`src/core/v2_multiplexed_session.cpp:270-344,675-740`；影响文档：索引、概要、本文件、root/core 目录、公共/异步/PImpl/多路文件、关系图、ADR、计划、回归指南和功能矩阵。
 - 2026-08-20：`S-0501` 新增版本无关 move-only Session/Stream 公共 API、PImpl client 适配、同步示例、线程 package 依赖和安装后外部消费者；Linux 测试覆盖 v2 TCP/file 与 v3 Unix/memfd。影响文档：索引、概要、本文件、root/core 目录、公共 API/实现文件、关系图、README、计划、回归指南和功能矩阵。
 - 2026-08-20：提交 `39937bd` 的 GitHub Actions run `32329216783` 七项门禁成功，`S-0404` 与 M4 正式关闭。

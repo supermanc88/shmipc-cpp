@@ -14,37 +14,7 @@ namespace {
 thread_local bool callback_executor_thread = false;
 
 Status make_status(Error error) noexcept {
-    return {error, 0};
-}
-
-Status map_receive_status(const core::V2SessionStatus& status) noexcept {
-    switch (status.error) {
-        case core::V2SessionError::none:
-            return {};
-        case core::V2SessionError::invalid_argument:
-            return make_status(Error::invalid_argument);
-        case core::V2SessionError::handshake_error:
-            return make_status(Error::handshake_error);
-        case core::V2SessionError::dispatcher_error:
-            return make_status(Error::event_loop_error);
-        case core::V2SessionError::transport_error:
-            return make_status(Error::transport_error);
-        case core::V2SessionError::codec_error:
-        case core::V2SessionError::unexpected_event:
-        case core::V2SessionError::unexpected_stream:
-            return make_status(Error::protocol_error);
-        case core::V2SessionError::queue_error:
-        case core::V2SessionError::buffer_pool_error:
-        case core::V2SessionError::buffer_io_error:
-            return make_status(Error::shared_memory_error);
-        case core::V2SessionError::unhealthy:
-            return make_status(Error::unhealthy);
-        case core::V2SessionError::closed:
-            return make_status(Error::closed);
-        case core::V2SessionError::timeout:
-            return make_status(Error::timeout);
-    }
-    return make_status(Error::protocol_error);
+    return detail::make_status(error);
 }
 
 }  // namespace
@@ -272,7 +242,7 @@ struct AsyncCallbackState final
                 continue;
             }
 
-            const auto status = map_receive_status(result.status);
+            const auto status = detail::map_session_status(result.status);
             if (status.error == Error::timeout) {
                 std::lock_guard<std::mutex> lock(mutex);
                 if (stopping || finished) {

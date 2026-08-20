@@ -54,6 +54,21 @@ closes both RAII handles:
 Use `shmipc::connect_unix` with `SharedMemoryMode::memfd` for the Linux v3
 memfd path. Memfd descriptor transfer is intentionally unavailable over TCP.
 
+## Synchronous server API
+
+`<shmipc/listener.hpp>` provides move-only TCP and Unix listeners. A client
+Session opens streams, while an accepted server Session accepts them. Closing
+the Listener stops new accepts without invalidating accepted Sessions. The
+`shmipc_synchronous_server` example accepts one v2 TCP stream and echoes one
+request:
+
+```bash
+./build/debug/examples/shmipc_synchronous_server 127.0.0.1 9000
+```
+
+`<shmipc/stream_connection.hpp>` optionally adapts a message-oriented Stream
+to copy-based byte reads and writes while preserving unread message suffixes.
+
 ## Project documents
 
 - [Porting plan](docs/SHMIPC_CPP_PORTING_PLAN.md)

@@ -9,11 +9,12 @@
 #include <limits>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 
 namespace shmipc {
-namespace {
+namespace detail {
 
-Status make_status(Error error, int system_error = 0) noexcept {
+Status make_status(Error error, int system_error) noexcept {
     return {error, system_error};
 }
 
@@ -83,6 +84,15 @@ Status map_v3_handshake_status(const core::V3HandshakeStatus& status) noexcept {
     }
 }
 
+}  // namespace detail
+
+namespace {
+
+using detail::make_status;
+using detail::map_session_status;
+using detail::map_transport_status;
+using detail::map_v3_handshake_status;
+
 bool valid_config(const ClientConfig& config) {
     if (config.queue_name.empty() || config.buffer_name.empty() ||
         config.queue_name == config.buffer_name ||
@@ -118,16 +128,6 @@ std::vector<shm::BufferTierSpec> map_tiers(const ClientConfig& config) {
 }
 
 }  // namespace
-
-struct Session::Impl final {
-    Impl(transport::EpollDispatcher&& event_dispatcher,
-         core::V2MultiplexedClientSession&& client_session) noexcept
-        : dispatcher(std::move(event_dispatcher)),
-          session(std::move(client_session)) {}
-
-    transport::EpollDispatcher dispatcher{};
-    core::V2MultiplexedClientSession session{};
-};
 
 const char* to_string(Error error) noexcept {
     switch (error) {
@@ -258,22 +258,52 @@ Session::Session(Session&&) noexcept = default;
 Session& Session::operator=(Session&&) noexcept = default;
 
 Session::operator bool() const noexcept {
-    return impl_ != nullptr && static_cast<bool>(impl_->session);
+    if (impl_ == nullptr) {
+        return false;
+    }
+    return std::visit([](const auto& session) {
+        return static_cast<bool>(session);
+    }, impl_->session);
 }
 
 bool Session::is_open() const noexcept {
-    return impl_ != nullptr && impl_->session.is_open();
+    return impl_ != nullptr && std::visit([](const auto& session) {
+        return session.is_open();
+    }, impl_->session);
 }
 
 bool Session::is_healthy() const noexcept {
-    return impl_ != nullptr && impl_->session.is_healthy();
+    return impl_ != nullptr && std::visit([](const auto& session) {
+        return session.is_healthy();
+    }, impl_->session);
 }
 
 StreamResult Session::open_stream() {
     if (impl_ == nullptr) {
         return {{}, make_status(Error::closed, EBADF)};
     }
-    auto result = impl_->session.open_stream();
+    if (!impl_->is_client()) {
+        return {{}, make_status(Error::unsupported)};
+    }
+    auto& session =
+        std::get<core::V2MultiplexedClientSession>(impl_->session);
+    auto result = session.open_stream();
+    if (!result) {
+        return {{}, map_session_status(result.status)};
+    }
+    return {Stream(std::make_shared<Stream::Impl>(std::move(result.value))), {}};
+}
+
+StreamResult Session::accept_stream(std::chrono::milliseconds timeout) {
+    if (impl_ == nullptr) {
+        return {{}, make_status(Error::closed, EBADF)};
+    }
+    if (impl_->is_client()) {
+        return {{}, make_status(Error::unsupported)};
+    }
+    auto& session =
+        std::get<core::V2MultiplexedServerSession>(impl_->session);
+    auto result = session.accept_stream(timeout);
     if (!result) {
         return {{}, map_session_status(result.status)};
     }
@@ -284,11 +314,9 @@ Status Session::close() noexcept {
     if (impl_ == nullptr) {
         return {};
     }
-    auto status = map_session_status(impl_->session.close());
-    const auto dispatcher_status = impl_->dispatcher.stop();
-    if (status && dispatcher_status != transport::TransportError::none) {
-        status = map_transport_status(dispatcher_status, 0);
-    }
+    auto status = std::visit([](auto& session) {
+        return map_session_status(session.close());
+    }, impl_->session);
     impl_.reset();
     return status;
 }
@@ -321,9 +349,10 @@ SessionResult Session::start(int socket_descriptor,
         if (!result) {
             return {{}, map_session_status(result.status)};
         }
+        auto event_loop = std::make_shared<EventLoop>(
+            std::move(dispatcher.value));
         return {Session(std::make_unique<Session::Impl>(
-                    std::move(dispatcher.value), std::move(result.value))),
-                {}};
+                    std::move(event_loop), std::move(result.value))), {}};
     }
 
     const core::V3ClientConfig internal_config{
@@ -341,9 +370,9 @@ SessionResult Session::start(int socket_descriptor,
         return {{}, handshake_status ? map_session_status(result.status)
                                      : handshake_status};
     }
+    auto event_loop = std::make_shared<EventLoop>(std::move(dispatcher.value));
     return {Session(std::make_unique<Session::Impl>(
-                std::move(dispatcher.value), std::move(result.value))),
-            {}};
+                std::move(event_loop), std::move(result.value))), {}};
 }
 
 SessionResult connect_tcp(const std::string& host, std::uint16_t port,

@@ -446,6 +446,21 @@ TransportResult<std::uint16_t> ControlListener::local_port() const noexcept {
     return {0U, TransportError::invalid_state, EAFNOSUPPORT};
 }
 
+TransportError ControlListener::set_nonblocking(bool enabled) noexcept {
+    if (fd_ < 0) {
+        return TransportError::invalid_state;
+    }
+    const auto flags = ::fcntl(fd_, F_GETFL);
+    if (flags < 0) {
+        return TransportError::system_error;
+    }
+    const auto desired = enabled ? flags | O_NONBLOCK : flags & ~O_NONBLOCK;
+    if (::fcntl(fd_, F_SETFL, desired) != 0) {
+        return TransportError::system_error;
+    }
+    return TransportError::none;
+}
+
 TransportError ControlListener::close() noexcept {
     const auto result = close_fd(fd_);
     if (!unix_path_.empty()) {

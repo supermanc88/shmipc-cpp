@@ -25,6 +25,7 @@ include(ShmipcProjectOptions)
 add_library(
     shmipc
     src/callback.cpp
+    src/listener.cpp
     src/core/protocol_version_negotiation.cpp
     src/core/v2_client_session.cpp
     src/core/v2_handshake.cpp
@@ -40,6 +41,7 @@ add_library(
     src/transport/control_socket.cpp
     src/transport/epoll_dispatcher.cpp
     src/session.cpp
+    src/stream_connection.cpp
     src/version.cpp
 )
 add_library(shmipc::shmipc ALIAS shmipc)

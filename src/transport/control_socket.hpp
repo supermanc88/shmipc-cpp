@@ -109,6 +109,7 @@ public:
     [[nodiscard]] int native_handle() const noexcept;
     [[nodiscard]] ControlSocketResult accept() noexcept;
     [[nodiscard]] TransportResult<std::uint16_t> local_port() const noexcept;
+    [[nodiscard]] TransportError set_nonblocking(bool enabled) noexcept;
     [[nodiscard]] TransportError close() noexcept;
 
 private:

@@ -148,6 +148,12 @@ target_include_directories(shmipc_public_session_test
 shmipc_apply_project_options(shmipc_public_session_test)
 add_test(NAME shmipc.public_session COMMAND shmipc_public_session_test)
 
+add_executable(shmipc_public_listener_test public_listener_test.cpp)
+target_link_libraries(shmipc_public_listener_test
+                      PRIVATE shmipc::shmipc Threads::Threads)
+shmipc_apply_project_options(shmipc_public_listener_test)
+add_test(NAME shmipc.public_listener COMMAND shmipc_public_listener_test)
+
 add_executable(shmipc_buffer_pool_interop_helper buffer_pool_interop_helper.cpp)
 target_link_libraries(shmipc_buffer_pool_interop_helper PRIVATE shmipc::shmipc)
 target_include_directories(shmipc_buffer_pool_interop_helper PRIVATE ${PROJECT_SOURCE_DIR}/src)
