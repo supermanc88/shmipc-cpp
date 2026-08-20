@@ -6,7 +6,7 @@
 |---|---|
 | 项目类型 | Go 到 C++ 的跨语言、跨运行时重实现 |
 | 参考实现 | `third_party/shmipc-go` commit `55c241eea321071278d1ee7f7c46292d23e50a5b` |
-| 当前阶段 | M2、M3、M4 已完成；M5 `S-0501` 公共同步 client API 已完成本机/远端验证，待云端门禁 |
+| 当前阶段 | M2、M3、M4 已完成；M5 `S-0501` 已完成，`S-0502` 异步 callback API 已完成本机/远端验证，待云端门禁 |
 | 已确认目标 | 在 Linux 上提供现代 C++ 共享内存 IPC 库，并与固定 Go 实现双向互通；Go 仅用于开发验收 |
 | 流程依据 | 用户提供的《软件项目端到端标准工作流程》 |
 | 架构依据 | [上游架构概要](../arch_docs/01_OVERVIEW.md) 与 [决策/风险](../arch_docs/02_DECISIONS.md) |
@@ -210,8 +210,8 @@ tools/
 
 切片：
 
-- `S-0501`（已完成本机/远端验证，待云端门禁）：版本无关 move-only RAII client Session/Stream、稳定错误分类、file/memfd 配置、同步示例及 install 后独立消费者。
-- `S-0502`：异步 callback executor、callback 内 Close 和销毁等待。
+- `S-0501`（已完成；提交 `62ed32f`）：版本无关 move-only RAII client Session/Stream、稳定错误分类、file/memfd 配置、同步示例及 install 后独立消费者。
+- `S-0502`（已完成本机/远端验证，待云端门禁）：共享 callback executor、每 Stream 串行 pump、RAII subscription、callback 内 Close、异常隔离和销毁等待；设计见 [ADR-0002](adr/0002-async-callback-executor.md)。
 - `S-0503`：Listener 与兼容连接适配。
 - `S-0504`：SessionManager、round-robin、Stream pool、断线重建。
 - `S-0505`：指标、日志和 shutdown flush。
@@ -325,10 +325,11 @@ Evidence ID → Requirement IDs → Gate type → Result
 - `E-M4-004`：多路 Session state 以 `V2SharedMemory/V3SharedMemory` variant 复用 pool/queue 数据面并保存运行期协议版本；v3 client/server 启动入口接入完整 memfd handshake，所有 Polling/FallbackData/StreamClose 使用 version 3。C++ 与固定 Go 两方向均完成 shared→fallback→sticky→ACK→close；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 18/18，普通互操作 50 轮、ASan helper 10 轮通过。
 - `E-M4-005`：Session breaker 在发送/接收 FallbackData 时首次打开固定 30 秒 unhealthy 窗口，重复触发不延长，到期可恢复并再次打开；`OpenStream` 在分配 ID 前拒绝，已有 Stream 继续。短窗口 C++ 单测与 v2/v3 固定 Go 双向互操作通过；本机 Debug/ASan+UBSan/TSan、远端 Debug/ASan 各 18/18，普通互操作 50 轮、ASan helper 10 轮通过。
 - `E-M5-001`：公共安装头以 PImpl 隔离内部 v2/v3 类型，Session 独占 dispatcher 并按连接→event loop 顺序关闭，Stream 保留 move-only 独立句柄；同步示例只依赖导出 target。Linux 公共集成覆盖 TCP/file v2 与 Unix/memfd v3；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 19/19，macOS/Linux install 后独立消费者通过。
+- `E-M5-002`：公共异步层以共享固定线程池承载多个 Stream，每流 generation/scheduled pump 保证 callback 串行且不丢唤醒；两流并行、重复注册、远端关闭、外部 Close 等待、callback 内 Close、callback 异常→error/local-close 均有集成覆盖。专项连续 20 轮通过；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 19/19，macOS/Linux install 后独立消费者通过。
 - `E-LAYOUT-001`：M1 的 Go/C++ byte/layout golden。
 - `E-INTEROP-*`：按 v2/v3、方向、架构分别记录互操作结果。
 
 ## 15. 下一步
 
-1. 提交并由云端七项门禁验证 `S-0501`；通过后进入 `S-0502` callback executor 与异步生命周期设计。
-2. 保留安装后消费者、公共 v2/v3 client 集成、live-pool mapping、双向 Go Session oracle、breaker 和既有压力矩阵作为持续回归。
+1. 提交并由云端七项门禁验证累计的 `S-0501`、`S-0502`；通过后进入 `S-0503` Listener 与兼容连接适配。
+2. 保留异步生命周期、安装后消费者、公共 v2/v3 client 集成、live-pool mapping、双向 Go Session oracle、breaker 和既有压力矩阵作为持续回归。

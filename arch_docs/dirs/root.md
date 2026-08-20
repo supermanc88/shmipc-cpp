@@ -2,7 +2,7 @@
 
 ## Summary
 
-当前仓库已建立 C++17/CMake 可安装库，并已加入控制协议 codec、共享布局、RAII mapping、跨进程原子 buffer pool、零拷贝 Buffer IO、MPSC queue、Unix/TCP control socket、Linux epoll 事件层，以及版本无关的 RAII client Session/Stream 公共 API。
+当前仓库已建立 C++17/CMake 可安装库，并已加入控制协议 codec、共享布局、RAII mapping、跨进程原子 buffer pool、零拷贝 Buffer IO、MPSC queue、Unix/TCP control socket、Linux epoll 事件层，以及版本无关的 RAII client Session/Stream 与异步 callback 公共 API。
 
 ## Directory Contents（深度=1）
 
@@ -16,8 +16,8 @@
 | `cmake/` | 目录 | ✅ | 工程选项与 package config 模板 |
 | `docs/` | 目录 | ✅ | C++ 移植计划与项目标准工作流 |
 | `examples/` | 目录 | ✅ | 公共同步 client 示例 |
-| `include/shmipc/` | 目录 | ✅ | 公共 C++ API；版本及 move-only Session/Stream |
-| `src/` | 目录 | ✅ | library 实现；包含公共 PImpl adapter、protocol、shared-memory 与 transport 模块 |
+| `include/shmipc/` | 目录 | ✅ | 公共 C++ API；版本、move-only Session/Stream 与 callback executor/subscription |
+| `src/` | 目录 | ✅ | library 实现；包含同步/异步公共 PImpl adapter、protocol、shared-memory 与 transport 模块 |
 | `tests/` | 目录 | ✅ | CTest 测试 target |
 | `third_party/` | 目录 | ✅ | 上游参考实现聚合目录 |
 | `tools/` | 目录 | ✅ | Go oracle 等开发验证工具 |
@@ -52,10 +52,11 @@
 - `map_buffer_pool` 允许无 ACK 握手期间 creator 已有活动 allocation，映射期校验稳定布局和动态 offset 边界，slice/chain 由运行期操作严格校验。
 - `include/shmipc/session.hpp:13-170` 与 `src/session.cpp:121-369` 建立不泄露内部类型的公共 RAII client API；Linux v2/v3 集成、Sanitizer 和安装消费 smoke 均通过。
 - `CMakeLists.txt:12-81` 将 `Threads::Threads` 作为 public 依赖并构建同步示例；`.github/workflows/ci.yml:47-53` 在安装后构建独立 package consumer。
+- `src/callback.cpp:56-443` 与 `src/public/session_impl.hpp:10-27` 实现共享线程池、每流串行 pump、subscription 和关闭等待；公共集成专项 20 轮、本机三套 sanitizer、远端 Debug/ASan 19/19 通过。
 
 ## Guesses & Uncertainties
 
-- 当前产物为静态库；最终是否同时发布动态库以及 ABI 稳定级别仍待确认。client 同步公共 API 已完成，server/异步/SessionManager 仍属于 M5 后续切片。
+- 当前产物为静态库；最终是否同时发布动态库以及 ABI 稳定级别仍待确认。client 同步与异步公共 API 已完成，server/SessionManager 仍属于 M5 后续切片。
 - 推荐目录和里程碑见 [移植计划](../../docs/SHMIPC_CPP_PORTING_PLAN.md)。
 - 远程 Linux 同步、构建和测试见 [项目工作流](../../docs/PROJECT_WORKFLOW.md)。
 

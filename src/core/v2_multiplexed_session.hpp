@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -71,6 +72,11 @@ public:
   [[nodiscard]] V2SessionStatus close();
   [[nodiscard]] V2SessionStatus
   wait_remote_close(std::chrono::milliseconds timeout);
+
+  using ReadableCallback = std::function<void()>;
+  [[nodiscard]] std::uint64_t
+  set_readable_callback(ReadableCallback callback);
+  void clear_readable_callback(std::uint64_t token) noexcept;
 
 private:
   friend class V2MultiplexedClientSession;

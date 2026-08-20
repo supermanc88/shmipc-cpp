@@ -7,6 +7,9 @@ graph TD
   consumer["consumer / examples / public tests"]
   public["include/shmipc/version.hpp + session.hpp"]
   public_impl["src/session.cpp PImpl adapter"]
+  callback_impl["src/callback.cpp async adapter"]
+  stream_impl["src/public/session_impl.hpp shared PImpl"]
+  callback_executor["CallbackExecutor shared thread pool"]
   library["shmipc library"]
   implementation["src/version.cpp"]
   package["shmipcConfig.cmake / shmipcTargets.cmake"]
@@ -45,8 +48,15 @@ graph TD
   public_impl -- implements --> public
   public_impl -- owns --> dispatcher
   public_impl -- delegates --> multiplexed_session
+  public_impl -- shares --> stream_impl
+  callback_impl -- implements --> public
+  callback_impl -- shares --> stream_impl
+  callback_impl -- schedules --> callback_executor
+  callback_impl -- drains --> multiplexed_session
+  multiplexed_session -- notifies readable --> callback_impl
   library -- contains --> implementation
   library -- contains --> public_impl
+  library -- contains --> callback_impl
   package -- exports --> library
   ci -- configures/builds/tests/installs --> library
   runner -- overlays/calls --> upstream

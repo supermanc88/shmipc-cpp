@@ -279,6 +279,15 @@
 - 构建：库公开传播 `Threads::Threads`，安装 config 用 `find_dependency(Threads)` 恢复依赖；CI 在 install 后以独立工程 `find_package(shmipc CONFIG REQUIRED)` 编译运行消费者。
 - 证据：`include/shmipc/session.hpp:13-170`、`src/session.cpp:13-369`、`tests/public_session_test.cpp:45-185`、`tests/package_consumer/`、`examples/synchronous_client.cpp`、`CMakeLists.txt:12-81`。本机 Debug/ASan+UBSan/TSan 与远端 GCC 8.5 Debug/ASan 各 19/19，两个平台安装消费 smoke 通过。
 
+### D-033：异步 callback 使用共享 executor 与每 Stream 串行 pump
+
+- 状态：已验证实现，待云端门禁；`S-0502` 本机与远端 Linux 门禁通过。
+- 分层：核心 `V2Stream` 只发布带 token 的非阻塞 readable notifier，复制后在 Stream mutex 外调用；公共 `AsyncCallbackState` 负责 generation/scheduled pump，用户 callback 不运行于 event-loop。
+- 并发：每个 Stream 至多一个 scheduled pump，保证 callback 串行；不同 Stream 共享固定线程池并可并行，不创建 per-Stream 阻塞线程。
+- ownership：subscription/state 强持有 callback、executor 与 Stream PImpl；核心 notifier 只 weak 捕获 state，PImpl 只 weak 指向 callback control，不形成环。
+- 关闭：普通线程 close/stop 等待在途 callback 完成；executor callback 内 close/stop 不自等待，pump 在 callback 返回后发布唯一终止 callback。`on_data` 异常被隔离为 `callback_error` 并触发本地关闭。
+- 证据：`include/shmipc/session.hpp:105-199`、`src/callback.cpp:56-443`、`src/public/session_impl.hpp:10-27`、`src/core/v2_multiplexed_session.cpp:270-344,675-740`、`tests/public_session_test.cpp`。专项连续 20 轮，本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 19/19，macOS/Linux 安装消费者通过。
+
 ## 设计风险与待验证事实
 
 ### R-001：共享内存使用本机字节序和手工 offset
@@ -326,6 +335,7 @@
 
 ## 修订历史
 
+- 2026-08-20：`S-0502` 新增共享 callback executor、核心 tokenized readable notifier、每流 generation pump、RAII subscription、callback 内 Close/异常隔离和普通线程销毁等待。证据：`include/shmipc/session.hpp:105-199`、`src/callback.cpp:56-443`、`src/public/session_impl.hpp:10-27`、`src/core/v2_multiplexed_session.cpp:270-344,675-740`；影响文档：索引、概要、本文件、root/core 目录、公共/异步/PImpl/多路文件、关系图、ADR、计划、回归指南和功能矩阵。
 - 2026-08-20：`S-0501` 新增版本无关 move-only Session/Stream 公共 API、PImpl client 适配、同步示例、线程 package 依赖和安装后外部消费者；Linux 测试覆盖 v2 TCP/file 与 v3 Unix/memfd。影响文档：索引、概要、本文件、root/core 目录、公共 API/实现文件、关系图、README、计划、回归指南和功能矩阵。
 - 2026-08-20：提交 `39937bd` 的 GitHub Actions run `32329216783` 七项门禁成功，`S-0404` 与 M4 正式关闭。
 - 2026-08-19：`S-0404` 新增 30 秒 Session circuit breaker、`is_healthy()` 与 `unhealthy` 开流错误；v2/v3 固定 Go 双向验证发送端和接收端均拒绝新流且已有 Stream 可继续。压力测试修正了“Go 必须在首个 shared read 后仍非 fallback”的时序假设：`pendingData.moveToWithoutLock` 会批量搬运后续 fallback。影响文档：索引、概要、本文件、core/oracle 目录、多路 Session 文件、关系图、计划、工作流、回归指南和功能矩阵。

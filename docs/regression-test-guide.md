@@ -82,7 +82,7 @@ ssh 23.2 'cd /home/chm/shmipc-cpp && \
 - `shmipc.v2_server_session`：Linux 上验证动态绑定远端 Stream ID 2、三消息批量 Polling、跨 slice、timeout 与双向 queue close；非 Linux 明确验证 epoll unsupported。
 - `shmipc.v2_multiplexed_session`：Linux 上验证 client ID 2/3/4、并发首包、server Accept、独立双向消息、persistent deadline、queue-full retry/close fallback、buffer 耗尽数据 fallback、sticky ordering、并发 send/close、Session failure 扇出与资源生命周期。
 - `shmipc.v3_multiplexed_session`：Linux 上通过真实 memfd/SCM_RIGHTS 资源验证 shared→fallback→sticky→ACK→close；非 Linux 明确验证 epoll unsupported。
-- `shmipc.public_session`：Linux 上仅经公共 client API 验证 TCP/file v2 与 Unix/memfd v3 的 connect/open/send/receive/close、RAII 清理和稳定错误分类；非 Linux 明确验证 event loop unsupported。
+- `shmipc.public_session`：Linux 上仅经公共 client API 验证 TCP/file v2 与 Unix/memfd v3 的 connect/open/send/receive/close、RAII 清理和稳定错误分类；异步部分验证每流串行/跨流并行、重复注册、远端关闭、外部 Close 等待、callback 内 Close 与异常隔离；非 Linux 明确验证 event loop unsupported。
 - `shmipc.go_protocol_oracle`：除控制协议与布局外，调用真实 C++ helpers 双向传递 slice chain/queue elements；验证两个方向的 v3 版本协商、memfd 资源握手和完整多路 Session 数据面，并在 Linux 验证 v2/v3 shared→fallback→sticky→反向 fallback ACK，以及两端 Session unhealthy 后拒绝新 Stream、已有 Stream 继续工作。
 - 任一 commit mismatch、缺行、重复/错序事件或字节差异均为失败，不允许自动更新 golden 后绕过评审。
 
@@ -94,6 +94,14 @@ cmake -S tests/package_consumer -B build/package-consumer \
   -DCMAKE_PREFIX_PATH="$PWD/build/install-test"
 cmake --build build/package-consumer
 ./build/package-consumer/shmipc_package_consumer
+```
+
+callback 生命周期或调度状态机变更后，额外连续运行公共与核心多路测试：
+
+```bash
+ctest --test-dir build/debug \
+  -R 'shmipc.public_session|shmipc.v2_multiplexed_session' \
+  --output-on-failure --repeat until-fail:20
 ```
 
 当前 golden 的 SHA-256：

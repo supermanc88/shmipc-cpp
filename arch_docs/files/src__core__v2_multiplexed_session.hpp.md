@@ -6,7 +6,7 @@
 
 ## Types（全量）
 
-- `V2Stream`：move-only Stream 句柄，提供 ID、消息级 `send/receive`、persistent read/write deadline、`close` 与远端关闭等待。
+- `V2Stream`：move-only Stream 句柄，提供 ID、消息级 `send/receive`、persistent read/write deadline、`close`、远端关闭等待，以及供公共适配层使用的 tokenized readable notifier。
 - `V2StreamResult`：Stream 创建/接受结果与细分 `V2SessionStatus`。
 - `V2MultiplexedClientSession`：client 连接 owner，按 2、3、4… 连续分配 Stream ID。
 - `V2MultiplexedServerSession`：server 连接 owner，按首个数据到达顺序接受未知非零 Stream ID。
@@ -28,6 +28,7 @@
 7. send queue full 时按固定 Go 行为每 10ms 重试、最多 10 次；write deadline 只约束这段重试。close element 遇到 full 时改发控制通道 `StreamClose`。
 8. `V2Stream::is_fallback()` 暴露当前 per-Stream sticky 状态；buffer 耗尽或消费对端 fallback payload 后变为 true，之后所有数据发送都走控制连接。
 9. 发送或接收 FallbackData 打开 Session breaker；client `open_stream` 在窗口内返回 `unhealthy`，不消耗 Stream ID，已有 Stream 不受影响。
+10. 消息、远端关闭、Session failure 或本地关闭改变可读状态后复制 notifier 并在 Stream mutex 外调用；注册返回 token，旧订阅清理不能覆盖较新的注册。
 
 ## Invariants & Boundaries
 
@@ -40,6 +41,7 @@
 - 本地 close 后保留状态以允许等待 Session failure/remote close，句柄释放时才从路由表移除；remote half-close 同样保留到应用本地 close/释放。Session failure 在扇出原始错误后清空路由与待 Accept 队列。
 - 本层仍为消息级内部 API；v3 资源接入已完成。v2 类型保留兼容，v3 以别名复用实现；M5 公共版本中性 client API 已通过 `src/session.cpp` PImpl 适配，不直接导出本文件类型。
 - breaker 使用固定 Go 的 30 秒窗口；重复 fallback 不延长已打开窗口。短时长只用于独立状态机单测，不进入 Session 配置。
+- readable notifier 只发布状态变化，不执行用户 callback、不阻塞 event-loop，也不保证一次通知对应一条消息；公共异步 pump 必须主动排空 receive。
 
 ## Evidence
 
@@ -50,6 +52,7 @@
 - `TestV3MultiplexedSessionInterop`：真实固定 Go 与 C++ 两个方向完成同一 v3 数据序列；远端普通 50 轮、ASan helper 10 轮通过。
 - `test_session_circuit_breaker` 验证 healthy→unhealthy、重复 open 不延长、到期恢复与再次打开；v2/v3 Session 和 Go oracle 验证两端拒绝新流及已有流继续。
 - 调试证据：close 无 ACK 的错误测试预期及 helper 过早关闭 Session 的竞态均通过 runtime 日志/退出时序定位，临时插桩已清理。
+- `src/core/v2_multiplexed_session.cpp:270-344,675-740`：四类状态通知、锁外调用与 tokenized 注销；`tests/public_session_test.cpp` 经公共异步 pump 覆盖串行/并行及关闭路径。
 
 ## Links
 
@@ -58,3 +61,4 @@
 - [单 server Session 基线](src__core__v2_server_session.hpp.md)
 - [架构决策](../02_DECISIONS.md)
 - [公共 PImpl 适配实现](src__session.cpp.md)
+- [公共异步 callback 实现](src__callback.cpp.md)

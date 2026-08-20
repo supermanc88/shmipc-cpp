@@ -11,6 +11,8 @@
 - [dirs/src__transport.md](dirs/src__transport.md)：Unix/TCP 控制 socket 与事件传输层
 - [files/include__shmipc__session.hpp.md](files/include__shmipc__session.hpp.md)：版本无关 RAII client Session/Stream 公共 API
 - [files/src__session.cpp.md](files/src__session.cpp.md)：公共 API PImpl、错误归一化与 v2/v3 client 适配
+- [files/src__callback.cpp.md](files/src__callback.cpp.md)：共享 callback executor、每流串行 pump 与 subscription 生命周期
+- [files/src__public__session_impl.hpp.md](files/src__public__session_impl.hpp.md)：同步/异步层共享的 private Stream PImpl
 - [dirs/tools__go_oracle.md](dirs/tools__go_oracle.md)：固定 Go 协议/数据平面 oracle
 - [files/src__protocol__control_codec.hpp.md](files/src__protocol__control_codec.hpp.md)：生产 codec 完整接口与错误模型
 - [files/src__shm__queue_layout.hpp.md](files/src__shm__queue_layout.hpp.md)：queue 布局常量、类型和完整接口
@@ -47,6 +49,7 @@
 | `include/shmipc/` | [files/include__shmipc__session.hpp.md](files/include__shmipc__session.hpp.md) | ✅ | #public-api #raii | 版本无关 Session/Stream、配置与错误接口 |
 | `examples/` | [dirs/root.md](dirs/root.md) | ✅ | #examples #public-api | 同步 client 公共 API 示例 |
 | `src/` | [dirs/root.md](dirs/root.md) | ✅ | #implementation | C++ 库实现入口 |
+| `src/public/` | [files/src__public__session_impl.hpp.md](files/src__public__session_impl.hpp.md) | ✅ | #pimpl #lifecycle | 同步/异步公共适配层共享的 private 状态 |
 | `src/core/` | [dirs/src__core.md](dirs/src__core.md) | ✅ | #handshake #v2 #v3 #interop | v2 文件与 v3 memfd 握手均已接入共用多路 Session 数据面并完成双向验证 |
 | `src/protocol/` | [dirs/src__protocol.md](dirs/src__protocol.md) | ✅ | #protocol #codec #safety | header、metadata 与 fallback 生产编解码 |
 | `src/shm/` | [dirs/src__shm.md](dirs/src__shm.md) | ✅ | #shared-memory #layout #mmap #zero-copy | 显式布局、mapping、pool、queue 与 Buffer IO |
@@ -66,8 +69,10 @@
 | `CMakeLists.txt` | ✅ | #cmake #install | C++17 library、CTest、安装与 package export |
 | `cmake/ShmipcProjectOptions.cmake` | ✅ | #warnings #sanitizer | GCC/Clang/MSVC 告警策略及 ASan/UBSan/TSan 入口 |
 | `include/shmipc/version.hpp` | ✅ | #public-api #version | 公共版本声明 |
-| `include/shmipc/session.hpp` | ✅ | #public-api #session #stream #raii | move-only client Session/Stream、配置、结果与稳定错误分类 |
-| `src/session.cpp` | ✅ | #public-api #pimpl #adapter | v2/v3 内部数据面的版本无关 PImpl 适配与 event loop ownership |
+| `include/shmipc/session.hpp` | ✅ | #public-api #session #stream #callback #raii | move-only client Session/Stream、异步 callback、配置、结果与稳定错误分类 |
+| `src/session.cpp` | ✅ | #public-api #pimpl #adapter | v2/v3 内部数据面的版本无关同步适配与 event loop ownership |
+| `src/callback.cpp` | ✅ | #public-api #callback #executor #lifecycle | 共享线程池、每流串行 pump、RAII subscription 与关闭/异常处理 |
+| `src/public/session_impl.hpp` | ✅ | #private #pimpl #lifecycle | 同步与异步实现共享的 Stream PImpl/control 状态 |
 | `examples/synchronous_client.cpp` | ✅ | #example #sync | TCP/file 模式 connect/open/send/receive/close 示例 |
 | `src/version.cpp` | ✅ | #implementation #version | 版本 API 实现 |
 | `src/protocol/control_codec.hpp` | ✅ | #protocol #codec #errors | 生产 codec 类型、常量和完整接口 |
@@ -99,7 +104,7 @@
 | `src/core/v2_client_session.cpp` | ✅ | #epoll #queue #buffer | Polling、消息收发、timeout 与 close 状态机 |
 | `src/core/v2_server_session.hpp` | ✅ | #server #session #stream | 首个远端 Stream 动态绑定与服务端 API |
 | `src/core/v2_multiplexed_session.hpp` | ✅ | #session #stream #v2 #v3 | 版本无关多路数据面、Session circuit breaker、v2/v3 启动入口与兼容别名 |
-| `src/core/v2_multiplexed_session.cpp` | ✅ | #session #routing #fallback | 资源 variant、版本化控制帧、30 秒 unhealthy 窗口与 Stream 路由实现 |
+| `src/core/v2_multiplexed_session.cpp` | ✅ | #session #routing #fallback #notifier | 资源 variant、版本化控制帧、30 秒 unhealthy 窗口、Stream 路由与 tokenized readable notifier |
 | `tests/version_test.cpp` | ✅ | #test | 无第三方依赖的首个 library test |
 | `tests/control_header_golden_test.cpp` | ✅ | #test #protocol #golden | C++ 侧消费 control-header fixture |
 | `tests/protocol_codec_test.cpp` | ✅ | #test #protocol #negative | metadata/fallback round-trip 与异常输入测试 |
@@ -120,7 +125,7 @@
 | `tests/v3_handshake_interop_helper.cpp` | ✅ | #test #interop #v3 | 固定 Go newSession 调用的双向完整握手 helper |
 | `tests/v3_multiplexed_session_test.cpp` | ✅ | #test #session #v3 | memfd Session shared/fallback/sticky/close 数据面测试 |
 | `tests/v3_multiplexed_session_interop_helper.cpp` | ✅ | #test #interop #v3 | 固定 Go oracle 调用的双向 v3 Session helper |
-| `tests/public_session_test.cpp` | ✅ | #test #public-api #v2 #v3 | 公共 client API 的 TCP/file 与 Unix/memfd 端到端测试 |
+| `tests/public_session_test.cpp` | ✅ | #test #public-api #v2 #v3 #callback | 公共 client API 的 v2/v3 端到端、callback 并发与关闭生命周期测试 |
 | `tests/package_consumer/` | ✅ | #test #install #cmake | 仅通过安装头和 `find_package` 构建的外部消费者 smoke |
 | `tests/v2_client_session_test.cpp` | ✅ | #test #session #roundtrip | 单 Stream 跨 slice 双向消息、timeout 与 close |
 | `tests/v2_client_session_interop_helper.cpp` | ✅ | #test #interop #stream | C++ client→真实 Go server helper |
@@ -172,6 +177,7 @@
 | C++ v3 多路 Session 数据面 | `src/core/v2_multiplexed_session.*`, `tests/v3_multiplexed_session*`, `tools/go_oracle/` | `COMP-002`, `STREAM-001..004` |
 | Session fallback 熔断 | `src/core/v2_multiplexed_session.*`, `stream.go`, `session.go`, `tools/go_oracle/` | `STREAM-003` |
 | C++ 公共同步 client API | `include/shmipc/session.hpp`, `src/session.cpp`, `examples/synchronous_client.cpp` | `API-001`, `NFR-004` |
+| C++ 异步 Stream callback | `include/shmipc/session.hpp`, `src/callback.cpp`, `src/public/session_impl.hpp`, `tests/public_session_test.cpp` | `API-003`, `NFR-002` |
 | 服务监听和热重启 | `listener.go`, `session_manager.go` | `API-002`, `OPS-001` |
 | 性能与稳定性指标 | `stats.go`, `bench_test.go` | `NFR-003`, `OBS-001` |
 
@@ -184,7 +190,8 @@
 - 已完成：`S-0403a` 数据 fallback 与 sticky ordering 已由提交 `c8d6ade` 及 GitHub Actions run `32212075730` 七项门禁关闭。
 - 已完成：`S-0403b` 已由提交 `4b2c7f1` 和 GitHub Actions run `32223456643` 七项门禁关闭。
 - 已完成：`S-0404` 已由提交 `39937bd` 和 GitHub Actions run `32329216783` 七项门禁关闭，M4 正式完成。
-- 进行中：`S-0501` 已实现稳定的 RAII client Session/Stream 公共 API、同步示例及安装后消费者；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 19/19 通过，待提交与云端门禁。
+- 已完成：`S-0501` 已由提交 `62ed32f` 实现稳定的 RAII client Session/Stream 公共 API、同步示例及安装后消费者。
+- 进行中：`S-0502` 已实现共享 callback executor、每流串行 pump、RAII subscription 与关闭/异常生命周期；本机 Debug/ASan+UBSan/TSan、远端 GCC 8.5 Debug/ASan 各 19/19 通过，待提交与云端门禁。
 - 部分完成：示例和热重启仅分析到架构/调用层；debug、日志和工具函数未逐符号记录。
 - 待验证：fallback/close 跨通道协议级 barrier 和更完整的异常注入矩阵。v3 握手、多路数据面、sticky fallback、Session breaker 与生命周期已完成本机、远端和固定 Go 双向验证。
 

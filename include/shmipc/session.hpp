@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,6 +24,8 @@ enum class Error {
     unhealthy,
     closed,
     timeout,
+    callback_already_set,
+    callback_error,
 };
 
 struct Status {
@@ -65,6 +68,10 @@ struct ClientConfig {
 struct MessageResult;
 struct StreamResult;
 struct SessionResult;
+struct CallbackSubscriptionResult;
+class CallbackExecutor;
+class StreamCallbacks;
+struct AsyncCallbackState;
 
 // Move-only stream handle. Operations on distinct streams may run
 // concurrently. Calls that mutate the same stream are serialized internally.
@@ -95,13 +102,17 @@ public:
 
     [[nodiscard]] Status close();
     [[nodiscard]] Status wait_remote_close(std::chrono::milliseconds timeout);
+    [[nodiscard]] CallbackSubscriptionResult set_callbacks(
+        std::shared_ptr<StreamCallbacks> callbacks,
+        std::shared_ptr<CallbackExecutor> executor);
 
 private:
     friend class Session;
+    friend struct AsyncCallbackState;
     struct Impl;
 
-    explicit Stream(std::unique_ptr<Impl> impl) noexcept;
-    std::unique_ptr<Impl> impl_;
+    explicit Stream(std::shared_ptr<Impl> impl) noexcept;
+    std::shared_ptr<Impl> impl_;
 };
 
 struct MessageResult {
@@ -115,6 +126,71 @@ struct MessageResult {
 
 struct StreamResult {
     Stream value{};
+    Status status{};
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return static_cast<bool>(status);
+    }
+};
+
+class StreamCallbacks {
+public:
+    virtual ~StreamCallbacks() = default;
+
+    virtual void on_data(Stream& stream, std::vector<std::uint8_t> data) = 0;
+    virtual void on_local_close(Stream& stream);
+    virtual void on_remote_close(Stream& stream);
+    virtual void on_error(Stream& stream, const Status& status);
+};
+
+// Shared callback thread pool. Each Stream is serialized, while different
+// Streams may execute concurrently up to thread_count().
+class CallbackExecutor final {
+public:
+    explicit CallbackExecutor(std::size_t thread_count = 1U);
+    ~CallbackExecutor();
+
+    CallbackExecutor(const CallbackExecutor&) = delete;
+    CallbackExecutor& operator=(const CallbackExecutor&) = delete;
+    CallbackExecutor(CallbackExecutor&&) = delete;
+    CallbackExecutor& operator=(CallbackExecutor&&) = delete;
+
+    [[nodiscard]] std::size_t thread_count() const noexcept;
+
+private:
+    friend struct AsyncCallbackState;
+    struct Impl;
+
+    [[nodiscard]] bool execute(std::function<void()> task);
+    std::unique_ptr<Impl> impl_;
+};
+
+// RAII registration. stop() removes the callbacks without closing the Stream
+// and waits for an in-flight callback unless called from an executor callback.
+class CallbackSubscription final {
+public:
+    CallbackSubscription() noexcept;
+    ~CallbackSubscription();
+
+    CallbackSubscription(const CallbackSubscription&) = delete;
+    CallbackSubscription& operator=(const CallbackSubscription&) = delete;
+    CallbackSubscription(CallbackSubscription&&) noexcept;
+    CallbackSubscription& operator=(CallbackSubscription&&) noexcept;
+
+    [[nodiscard]] explicit operator bool() const noexcept;
+    [[nodiscard]] Status stop() noexcept;
+
+private:
+    friend struct CallbackSubscriptionResult;
+    friend class Stream;
+    struct Impl;
+
+    explicit CallbackSubscription(std::unique_ptr<Impl> impl) noexcept;
+    std::unique_ptr<Impl> impl_;
+};
+
+struct CallbackSubscriptionResult {
+    CallbackSubscription value{};
     Status status{};
 
     [[nodiscard]] explicit operator bool() const noexcept {

@@ -1,6 +1,7 @@
 #include "shmipc/session.hpp"
 
 #include "core/v2_multiplexed_session.hpp"
+#include "public/session_impl.hpp"
 #include "transport/control_socket.hpp"
 #include "transport/epoll_dispatcher.hpp"
 
@@ -118,11 +119,6 @@ std::vector<shm::BufferTierSpec> map_tiers(const ClientConfig& config) {
 
 }  // namespace
 
-struct Stream::Impl final {
-    explicit Impl(core::V2Stream&& value) noexcept : stream(std::move(value)) {}
-    core::V2Stream stream{};
-};
-
 struct Session::Impl final {
     Impl(transport::EpollDispatcher&& event_dispatcher,
          core::V2MultiplexedClientSession&& client_session) noexcept
@@ -159,18 +155,24 @@ const char* to_string(Error error) noexcept {
             return "closed";
         case Error::timeout:
             return "timeout";
+        case Error::callback_already_set:
+            return "callback already set";
+        case Error::callback_error:
+            return "callback error";
     }
     return "unknown error";
 }
 
-Stream::Stream(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
+Stream::Stream(std::shared_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
 Stream::Stream() noexcept = default;
 Stream::~Stream() = default;
 Stream::Stream(Stream&&) noexcept = default;
 Stream& Stream::operator=(Stream&&) noexcept = default;
 
 Stream::operator bool() const noexcept {
-    return impl_ != nullptr && static_cast<bool>(impl_->stream);
+    return impl_ != nullptr &&
+           !impl_->closed.load(std::memory_order_acquire) &&
+           static_cast<bool>(impl_->stream);
 }
 
 std::uint32_t Stream::id() const noexcept {
@@ -222,7 +224,18 @@ Status Stream::close() {
     if (impl_ == nullptr) {
         return {};
     }
-    const auto status = map_session_status(impl_->stream.close());
+    auto impl = impl_;
+    impl->local_close_requested.store(true, std::memory_order_release);
+    impl->closed.store(true, std::memory_order_release);
+    std::shared_ptr<AsyncCallbackControl> callback_control;
+    {
+        std::lock_guard<std::mutex> lock(impl->callback_mutex);
+        callback_control = impl->callback_control.lock();
+    }
+    const auto status = map_session_status(impl->stream.close());
+    if (callback_control && !is_callback_executor_thread()) {
+        callback_control->wait_until_finished();
+    }
     impl_.reset();
     return status;
 }
@@ -264,7 +277,7 @@ StreamResult Session::open_stream() {
     if (!result) {
         return {{}, map_session_status(result.status)};
     }
-    return {Stream(std::make_unique<Stream::Impl>(std::move(result.value))), {}};
+    return {Stream(std::make_shared<Stream::Impl>(std::move(result.value))), {}};
 }
 
 Status Session::close() noexcept {

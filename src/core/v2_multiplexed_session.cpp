@@ -88,6 +88,8 @@ struct V2StreamState final {
   std::optional<V2Stream::Deadline> read_deadline{};
   std::optional<V2Stream::Deadline> write_deadline{};
   std::uint64_t deadline_generation{0U};
+  std::uint64_t readable_callback_token{0U};
+  V2Stream::ReadableCallback readable_callback{};
   bool local_closed{false};
   bool remote_closed{false};
   bool fallback{false};
@@ -271,13 +273,18 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
     if (!stream) {
       return {};
     }
+    bool delivered = false;
     {
       std::lock_guard<std::mutex> lock(stream->mutex);
       if (!stream->remote_closed) {
         stream->messages.push_back({std::move(message), fallback});
+        delivered = true;
       }
     }
     stream->condition.notify_all();
+    if (delivered) {
+      notify_readable(stream);
+    }
     return {};
   }
 
@@ -291,6 +298,7 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
       stream->remote_closed = true;
     }
     stream->condition.notify_all();
+    notify_readable(stream);
   }
 
   void fail(const V2SessionStatus &status) {
@@ -317,6 +325,21 @@ struct V2MultiplexedSessionState final : transport::ControlEventCallback {
         }
       }
       stream->condition.notify_all();
+      notify_readable(stream);
+    }
+  }
+
+  static void notify_readable(const std::shared_ptr<V2StreamState> &stream) {
+    V2Stream::ReadableCallback callback;
+    {
+      std::lock_guard<std::mutex> lock(stream->mutex);
+      callback = stream->readable_callback;
+    }
+    if (callback) {
+      try {
+        callback();
+      } catch (...) {
+      }
     }
   }
 
@@ -667,6 +690,7 @@ V2SessionStatus V2Stream::close() {
     }
   }
   stream_->condition.notify_all();
+  V2MultiplexedSessionState::notify_readable(stream_);
   if (!failure) {
     return failure;
   }
@@ -685,6 +709,34 @@ V2SessionStatus V2Stream::close() {
     }
   }
   return status;
+}
+
+std::uint64_t
+V2Stream::set_readable_callback(ReadableCallback callback) {
+  if (!stream_ || !callback) {
+    return 0U;
+  }
+  std::uint64_t token = 0U;
+  {
+    std::lock_guard<std::mutex> lock(stream_->mutex);
+    ++stream_->readable_callback_token;
+    if (stream_->readable_callback_token == 0U) {
+      ++stream_->readable_callback_token;
+    }
+    token = stream_->readable_callback_token;
+    stream_->readable_callback = std::move(callback);
+  }
+  return token;
+}
+
+void V2Stream::clear_readable_callback(std::uint64_t token) noexcept {
+  if (!stream_ || token == 0U) {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(stream_->mutex);
+  if (stream_->readable_callback_token == token) {
+    stream_->readable_callback = {};
+  }
 }
 
 V2SessionStatus V2Stream::wait_remote_close(std::chrono::milliseconds timeout) {
